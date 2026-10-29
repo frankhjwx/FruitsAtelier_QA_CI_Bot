@@ -20,8 +20,12 @@ def locator(query, direction, sources, evidence, sha):
         line = re.fullmatch(r'L(\d+)(?:-L\d+)?', url.fragment)
         selected.append({'path': path[:240], 'line': int(line[1]) if line else 1,
                          'source': item['source'][:300]})
+    selected.sort(key=lambda item: (not item['source'].startswith(item['path']+':'), item['path'].startswith('docs/')))
+    unique = {}
+    for item in selected:
+        unique.setdefault(item['path'], item)
     return {'query': str(query)[:200], 'direction': str(direction)[:400],
-            'commit': sha, 'locations': selected[:6]}
+            'commit': sha, 'locations': list(unique.values())[:6]}
 
 
 def encode(request, localization=None):

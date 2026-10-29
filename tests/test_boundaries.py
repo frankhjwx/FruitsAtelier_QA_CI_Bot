@@ -47,6 +47,20 @@ class WorkspaceTests(unittest.TestCase):
                 with self.subTest(path=path), self.assertRaises(ValueError):
                     ws.path(path, write=True)
 
+    def test_only_known_localization_json_is_writable_in_worker_and_validator(self):
+        from validate_private import apply_changes
+        with tempfile.TemporaryDirectory() as folder:
+            ws=worker.Workspace(folder)
+            for name in sorted(worker.LOCALIZATION_FILES):
+                ws.replace(name,'','{"label":"Measurement"}')
+                apply_changes(Path(folder),{name:'{"label":"Updated"}'})
+                self.assertIn('Updated',ws.path(name).read_text())
+            for name in ('src/config.json','src/FruitsAtelier.Core/Localization/other.json',
+                         'src/FruitsAtelier.Core/Localization/../config.json'):
+                with self.subTest(name=name):
+                    with self.assertRaises(ValueError): ws.path(name,write=True)
+                    with self.assertRaises(ValueError): apply_changes(Path(folder),{name:'{}'})
+
     def test_replace_requires_unique_evidence_and_limits_files(self):
         with tempfile.TemporaryDirectory() as folder:
             ws = worker.Workspace(folder)

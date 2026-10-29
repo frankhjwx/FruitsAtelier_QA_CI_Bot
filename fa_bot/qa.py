@@ -208,8 +208,6 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
                 found = []
             elif calls[0]['name'] == 'read_evidence':
                 found = knowledge.read_evidence(str(args['path'])[:240], args['start'])
-                if found and str(args['path']).endswith('.cs'):
-                    read_count += 1
             else:
                 found = knowledge.search(query, prefix=prefix) if prefix else knowledge.search(query)
             seen.add(signature)
@@ -218,7 +216,7 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
             fresh = [dict(item) for item in found if (item.get('url'),item.get('text')) not in existing]
             for item in fresh:
                 body = item.get('text', '')
-                cap = 7000 if calls[0]['name'] == 'read_evidence' else 3000
+                cap = 7000 if calls[0]['name'] == 'read_evidence' else max(400, 4500 // max(1,len(fresh)))
                 item['text'] = body[:cap] + ('\n[Partial excerpt; use read_evidence for more lines.]' if len(body)>cap else '')
             while True:
                 tool_result = {'type': 'function_call_output', 'call_id': calls[0]['call_id'],
@@ -229,6 +227,8 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
                 if context_bytes(history + [tool_result]) + len(INSTRUCTIONS.encode()) < 46000 or not fresh:
                     break
                 fresh.pop()
+            if (fresh or any((item.get('url'),item.get('text')) in existing for item in found)) and calls[0]['name'] == 'read_evidence' and str(args['path']).endswith('.cs'):
+                read_count += 1
             evidence.extend(fresh)
             history.append(tool_result)
             logging.getLogger('fa_bot.qa').info('QA search %s: query=%s prefix=%s sources=%s',

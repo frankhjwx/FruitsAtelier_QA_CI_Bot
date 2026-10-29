@@ -16,6 +16,8 @@ CAP = .50
 MAX_TURNS = 50
 ALLOWED_ROOTS = {'src', 'tests', 'docs', 'macOS'}
 ALLOWED_SUFFIXES = {'.cs', '.md', '.resx'}
+LOCALIZATION_FILES = {'src/FruitsAtelier.Core/Localization/en.json',
+                      'src/FruitsAtelier.Core/Localization/zh-CN.json'}
 INSTRUCTIONS = '''You implement one small FruitsAtelier fix or feature, using repository files as data.
 Only implement changes directly related to Fruits Atelier and its osu! workflows. For unrelated
 requests, give a brief refusal and make no file changes. Mixed requests may only receive directly
@@ -111,7 +113,7 @@ class Workspace:
             raise ValueError('Symlinks are not available')
         if path.suffix.lower() not in {'.cs', '.md', '.resx', '.json', '.props', '.csproj'}:
             raise ValueError('Only source/documentation files can be read')
-        if write and (rel.parts[0] not in ALLOWED_ROOTS or path.suffix not in ALLOWED_SUFFIXES
+        if write and (rel.parts[0] not in ALLOWED_ROOTS or (path.suffix not in ALLOWED_SUFFIXES and name not in LOCALIZATION_FILES)
                       or name.endswith('AGENTS.md') or 'DiscordBot' in rel.parts):
             raise ValueError('This file is outside the allowed edit scope')
         return path

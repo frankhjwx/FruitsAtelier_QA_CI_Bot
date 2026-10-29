@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 from ci_transfer import Transfer
+from worker import LOCALIZATION_FILES
 
 HARNESS = r'''
 using System;
@@ -64,7 +65,7 @@ def apply_changes(root,changes):
     if not 1<=len(changes)<=8: raise ValueError('Invalid change count')
     for name,body in changes.items():
         path=Path(name)
-        if path.is_absolute() or '..' in path.parts or '\\' in name or path.parts[0] not in {'src','tests','docs','macOS'} or path.suffix not in {'.cs','.md','.resx'} or name.endswith('AGENTS.md'):
+        if path.is_absolute() or '..' in path.parts or '\\' in name or path.parts[0] not in {'src','tests','docs','macOS'} or (path.suffix not in {'.cs','.md','.resx'} and name not in LOCALIZATION_FILES) or name.endswith('AGENTS.md'):
             raise ValueError('Invalid candidate path')
         dest=(root/path).resolve()
         if not dest.is_relative_to(root.resolve()) or dest.is_symlink() or len(body.encode())>2_000_000:
