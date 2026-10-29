@@ -38,7 +38,7 @@ class Session:
             return Response({'output': [{'type': 'function_call', 'name': 'search_evidence',
                                          'call_id': 'call1', 'arguments': '{"query":"slider anchors"}'}],
                              'usage': {'input_tokens': 400, 'output_tokens': 30}})
-        return Response({'output': [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'Grounded answer'}]}],
+        return Response({'output': [{'type': 'message', 'content': [{'type': 'output_text', 'text': json.dumps({'answer': 'Grounded answer', 'change_request': None})}]}],
                          'usage': {'input_tokens': 1000, 'output_tokens': 100}})
 
 
@@ -71,7 +71,8 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
             bot.store.update('123', 'running', 10)
             github = type('Github', (), {
                 'run': AsyncMock(return_value={'id': 10, 'status': 'completed', 'conclusion': 'success', 'html_url': 'private'}),
-                'find_run': AsyncMock(return_value={'id': 20, 'html_url': 'public'})})()
+                'find_run': AsyncMock(return_value={'id': 20, 'html_url': 'public'}),
+                'source_receipt': AsyncMock(return_value='a'*40)})()
             bot.github = github
             with patch('fa_bot.bot.asyncio.sleep', side_effect=asyncio.CancelledError):
                 with self.assertRaises(asyncio.CancelledError):
@@ -92,7 +93,8 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
     async def test_qa_two_rounds_evidence_and_usage(self):
         session = Session()
         text, cost = await answer(session, 'fake', Knowledge(), 'How do anchors work?')
-        self.assertEqual(text, 'Grounded answer')
+        self.assertEqual(text.text, 'Grounded answer')
+        self.assertIsNone(text.change_request)
         self.assertEqual(len(session.calls), 2)
         self.assertLess(cost, .02)
         self.assertIn('evidence', session.calls[1]['input'][-1]['output'])
@@ -161,7 +163,7 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
             try:
                 with patch('fa_bot.bot.answer', side_effect=APIError(403, 'unsupported_country_region_territory')):
                     result = await bot.ask(1, 123, 'Introduce Fruits Atelier')
-                self.assertIn('maintainer must update', result)
+                self.assertIn('maintainer must update', result.text)
                 self.assertEqual(bot.busy, 0)
             finally:
                 bot.store.db.close()

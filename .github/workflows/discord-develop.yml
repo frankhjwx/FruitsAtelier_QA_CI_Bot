@@ -77,6 +77,19 @@ jobs:
           SOURCE_ROOT: ${{ github.workspace }}/source
         run: python controller/worker.py
 
+      - name: Record tested source identity
+        env:
+          SOURCE_SHA: ${{ steps.edit.outputs.commit }}
+          JOB_ID: ${{ inputs.job_id }}
+        run: python -c "import json,os; open('source.json','w').write(json.dumps({'job_id':os.environ['JOB_ID'],'sha':os.environ['SOURCE_SHA']}))"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-${{ inputs.job_id }}
+          path: source.json
+          retention-days: 30
+          overwrite: true
+          if-no-files-found: error
+
       - name: Dispatch and wait for public editor package
         env:
           GH_TOKEN: ${{ secrets.FA_SOURCE_TOKEN }}

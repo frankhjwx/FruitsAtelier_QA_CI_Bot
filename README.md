@@ -17,11 +17,6 @@ editor's `dev` or `main` branches.
   cites commit-pinned evidence through compact source buttons below the answer.
   Message bodies omit URLs and disable link previews. The 10–30 second target is a response target,
   not a guarantee of bug reproduction. A lookup has a 26-second deadline.
-Replies to Papaya also trigger QA without an explicit mention. The bot reads up
-to six preceding messages (1,000 characters each) from the same channel and
-reply chain, using only the requester and Papaya messages. Context retrieval
-has a three-second deadline; missing or inaccessible messages shorten context.
-Earlier answers are rechecked against fresh repository evidence.
 
 - `/template`: concise usage, bug and feature request templates.
 - `/develop`: attempt a small change on `codex-discord-bug-fix`. The branch
@@ -33,12 +28,26 @@ Earlier answers are rechecked against fresh repository evidence.
 - `/task <task_id>`: retrieve status and the workflow link, including after a
   Discord delivery failure.
 
+Replies to Papaya also trigger QA without an explicit mention. The bot reads up
+to six preceding messages (1,000 characters each) from the same channel and
+reply chain, using only the requester and Papaya messages. Context retrieval
+has a three-second deadline; missing or inaccessible messages shorten context.
+Earlier answers are rechecked against fresh repository evidence.
+
+
 Guild access is limited to the two configured FruitsAtelier servers. Owner DMs
 are supported for questions. Enable Message Content intent in the Discord developer portal so replies with
 mentions disabled can be read. The bot responds only to mentions, replies to
 itself, and eligible owner DMs. Slash
-commands are registered per guild. Mention replies do not automatically start
-development: use `/develop` or `/revise` explicitly.
+commands are registered per guild. Messages in any channel, including `feature-requests` and `bug-reports`, require
+an explicit mention or a reply to Papaya. Unaddressed conversation is ignored.
+QA identifies feature proposals and bug-fix intent in the same response call.
+When appropriate, it offers a **Modify and test** button for 15 minutes. Only the
+original requester in the same channel can confirm; code editing starts only
+after confirmation. Ordinary questions show no development button. Concurrent
+or repeated clicks cannot dispatch the same offer twice. A busy repair slot
+leaves the offer available to retry until it expires. `/develop` and `/revise`
+remain explicit command shortcuts.
 
 ## Evidence and test packages
 
@@ -56,6 +65,15 @@ required. Windows packages use `0.0.2-alpha.<run-number>` and are for separate t
 installations, not the stable updater feed. macOS regressions run, but this
 workflow does not distribute macOS packages.
 
+After a successful package run, **Test passed - Open PR** lets the original
+requester confirm their test result. The controller opens a PR from the shared
+repair branch into `dev` only if the branch still matches the tested commit.
+The PR triggers the editor repository's existing CI. It is never merged or set
+to auto-merge by the Bot. The shared branch stays locked while PR creation or
+maintainer review is pending. PR confirmation persists across Bot restarts.
+The server reads a small private source receipt in memory; no package or artifact
+folder is created on the server.
+
 Package ZIPs are downloaded by users from GitHub; the Bot server does not
 download or extract them.
 
@@ -70,7 +88,7 @@ The durable UTC-calendar-month ledger limits automatic QA to $10 and development
 reservations to $80, leaving $10 of a $100 target outside automated allocation.
 QA reserves $0.02 before a request and settles successful calls using reported
 usage. Failures retain the reservation. Development reserves $0.50 per attempt;
-unused development reservation is not refunded. The worker also checks each
+unused development reservation is not refunded. PR creation uses no model call. The worker also checks each
 model call against the same per-attempt ceiling using a conservative UTF-8 byte
 bound. Some requests will exceed this small-change budget and stop without a
 package. Five daily development attempts per user and one active repair globally
@@ -115,7 +133,8 @@ Bot tracks both phases and sends users the public editor run link.
 Add the CI service-account key
 as repository secret `FA_OPENAI_CI_KEY`. Add `FA_SOURCE_TOKEN`, a separate GitHub
 fine-grained token restricted to `frankhjwx/FruitsAtelier` with **Contents: Read
-and write** and **Actions: Read and write**, to publish experimental branches
+and write**, **Actions: Read and write**, and **Pull requests: Read and write**,
+to publish experimental branches and open user-confirmed PRs
 and dispatch editor CI. It is passed only to the trusted
 editing worker; test/build jobs do not receive it. No Discord token is needed
 in GitHub Actions.

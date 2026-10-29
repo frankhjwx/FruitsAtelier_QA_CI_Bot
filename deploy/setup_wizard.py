@@ -63,6 +63,7 @@ def token_link(kind):
         'name': 'FruitsAtelier-' + kind, 'target_name': 'frankhjwx',
         'expires_in': '90', 'actions': 'write',
         'contents': 'read' if kind == 'server' else 'write',
+        **({'pull_requests': 'write'} if kind == 'ci' else {}),
         'description': 'Discord task dispatch' if kind == 'server' else 'Experimental editor branches and CI'})
 
 
@@ -158,7 +159,7 @@ def main():
         ('server', '3. GitHub - Server Token',
          'Only select repositories: FruitsAtelier_QA_CI_Bot and FruitsAtelier.\nPermissions: Actions = Read and write; Contents = Read-only.', token_link('server')),
         ('source', '4. GitHub · CI Token',
-         'Only select repositories: FruitsAtelier.\nPermissions: Actions and Contents = Read and write.', token_link('ci'))]
+         'Only select repositories: FruitsAtelier.\nPermissions: Actions, Contents and Pull requests = Read and write.', token_link('ci'))]
     for key, label, description, url in fields:
         row = ttk.Frame(frame)
         row.pack(fill='x', pady=(0, 4))

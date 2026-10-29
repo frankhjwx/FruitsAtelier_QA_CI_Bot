@@ -26,3 +26,59 @@ def linked_message(text, label='Source'):
         view.add_item(discord.ui.Button(label=f'{label} {index}', url=url))
     return {'content': content.strip() or 'See the links below.',
             'view': view if urls else None, 'suppress_embeds': True}
+
+
+class DevelopmentOffer(discord.ui.View):
+    def __init__(self, bot, owner, channel, request, sources=None):
+        super().__init__(timeout=900)
+        self.bot, self.owner, self.channel, self.request = bot, owner, channel, request
+        self.pending = False
+        self.submitted = False
+        self.message = None
+        self.confirm_button = discord.ui.Button(label='Modify and test', style=discord.ButtonStyle.primary)
+        self.confirm_button.callback = self.confirm
+        self.add_item(self.confirm_button)
+        if sources:
+            for item in list(sources.children):
+                sources.remove_item(item)
+                item.row = 1
+                self.add_item(item)
+
+    async def confirm(self, interaction):
+        if interaction.user.id != self.owner or interaction.channel_id != self.channel:
+            await interaction.response.send_message('Only the original requester can confirm this change.', ephemeral=True)
+            return
+        if self.pending or self.submitted or self.is_finished():
+            await interaction.response.send_message('This confirmation is no longer available.', ephemeral=True)
+            return
+        self.pending = True
+        try:
+            await interaction.response.defer(thinking=True, ephemeral=True)
+            try:
+                status = await self.bot.start_job(interaction, self.request)
+            except ValueError as error:
+                await interaction.followup.send(str(error), ephemeral=True)
+                return
+            self.submitted = True
+            self.confirm_button.disabled = True
+            self.stop()
+            await interaction.followup.send(status, ephemeral=True)
+            if interaction.message:
+                await interaction.message.edit(view=self)
+        finally:
+            self.pending = False
+
+    async def on_timeout(self):
+        self.confirm_button.disabled = True
+        if self.message:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
+
+
+def qa_message(reply, bot, owner, channel):
+    result = linked_message(reply.text)
+    if reply.change_request:
+        result['view'] = DevelopmentOffer(bot, owner, channel, reply.change_request, result['view'])
+    return result

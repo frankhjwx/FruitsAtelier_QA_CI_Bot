@@ -193,6 +193,9 @@ def main():
     key, branch = os.environ['JOB_ID'], os.environ['TASK_BRANCH']
     if not re.fullmatch(r'\d{15,22}', key) or branch != 'codex-discord-bug-fix':
         raise ValueError('Invalid task identity')
+    pending = request_json(f'https://api.github.com/repos/{REPO}/pulls?state=open&base=dev&head=frankhjwx:{branch}', os.environ['GH_TOKEN'])
+    if pending:
+        raise RuntimeError('The shared branch has a PR awaiting maintainer review')
     root = Path(os.environ['SOURCE_ROOT']).resolve()
     parent = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
     previous_message = subprocess.check_output(['git', '-C', str(root), 'log', '-1', '--format=%B'], text=True)

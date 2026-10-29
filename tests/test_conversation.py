@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from fa_bot.bot import Bot
 from fa_bot.conversation import reply_context
-from fa_bot.qa import answer
+from fa_bot.qa import QAReply, answer
 from test_flow import Session, Knowledge
 
 
@@ -53,7 +53,7 @@ class ConversationTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as folder, patch.dict('os.environ',{'STATE_FILE':str(Path(folder)/'state.sqlite3')}):
             bot=Bot()
             bot._connection.user=NS(id=9)
-            bot.ask=AsyncMock(return_value='Follow-up answer')
+            bot.ask=AsyncMock(return_value=QAReply('Follow-up answer'))
             try:
                 await bot.on_message(current)
                 self.assertEqual(bot.ask.call_args.kwargs['context'],[{'role':'assistant','content':parent.content}])

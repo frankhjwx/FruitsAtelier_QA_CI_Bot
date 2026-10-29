@@ -1,0 +1,46 @@
+name: Discord tested change PR
+run-name: FA PR ${{ inputs.job_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Confirmed Discord task
+        required: true
+        type: string
+      commit:
+        description: Tested source commit
+        required: true
+        type: string
+      build_run:
+        description: Successful public package run
+        required: true
+        type: string
+      request:
+        description: Original development request
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: discord-repair
+  cancel-in-progress: false
+jobs:
+  propose:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Open PR for the tested commit
+        env:
+          GH_TOKEN: ${{ secrets.FA_SOURCE_TOKEN }}
+          JOB_ID: ${{ inputs.job_id }}
+          SOURCE_SHA: ${{ inputs.commit }}
+          BUILD_RUN: ${{ inputs.build_run }}
+          TASK_REQUEST: ${{ inputs.request }}
+        run: python open_pr.py

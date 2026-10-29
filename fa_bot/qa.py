@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import asyncio
 import json
 import aiohttp
@@ -17,7 +18,27 @@ Use search_evidence once with English technical keywords (translate the user's q
 Then provide the best supported answer. Avoid repeated questions; at most one concise request for
 essential missing information, after a useful initial answer. If evidence is insufficient, say so.
 Keep answers under 1500 characters; cite at most three relevant evidence links.
+When the user proposes a feature, describes desired new behavior, requests a bug fix, or reports a
+concrete malfunction they want resolved, set change_request to a concise standalone development task.
+A proposal prefaced with "not sure if available" still expresses development intent if it describes
+wanted behavior. Preserve requirements and relevant reply context; do not invent implementation details.
+Set change_request to null for ordinary usage questions, small talk, or unclear development intent.
+The task must be 10-3500 characters. Explain existing behavior in answer; never claim a change started.
+A separate confirmation button is required before any code modification or CI dispatch.
 '''
+
+
+@dataclass(frozen=True)
+class QAReply:
+    text: str
+    change_request: str | None = None
+
+
+ANSWER_FORMAT = {'type': 'json_schema', 'name': 'support_reply', 'strict': True,
+                 'schema': {'type': 'object', 'properties': {
+                     'answer': {'type': 'string'},
+                     'change_request': {'type': ['string', 'null']}},
+                     'required': ['answer', 'change_request'], 'additionalProperties': False}}
 
 
 class APIError(RuntimeError):
@@ -36,7 +57,7 @@ def output_text(result):
 
 async def answer(session, key, knowledge, question, context=()):
     if not knowledge.sha:
-        return 'Knowledge is still syncing; please retry shortly.', 0
+        return QAReply('Knowledge is still syncing; please retry shortly.'), 0
     tool = {'type': 'function', 'name': 'search_evidence',
             'description': 'Search public FruitsAtelier documentation, code and recent issues.',
             'parameters': {'type': 'object', 'properties': {'query': {'type': 'string'}},
@@ -88,8 +109,12 @@ async def answer(session, key, knowledge, question, context=()):
                 break
             evidence.pop()
         history.append(tool_result)
-        result = await call()
+        result = await call(text={'format': ANSWER_FORMAT})
         text = output_text(result)
         if not text:
             raise RuntimeError('No answer produced within token limit')
-        return text[:1850], cost
+        data = json.loads(text)
+        change = data.get('change_request')
+        if not isinstance(change, str) or not 10 <= len(change.strip()) <= 3500:
+            change = None
+        return QAReply(data['answer'][:1850], change.strip() if change else None), cost

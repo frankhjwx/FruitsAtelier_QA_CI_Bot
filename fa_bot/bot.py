@@ -13,9 +13,10 @@ from .conversation import reply_context
 from .config import GUILDS, OWNER, JOB_CAP, WORK_BRANCH, secret
 from .github import GitHub
 from .knowledge import Knowledge
-from .messages import linked_message
-from .qa import APIError, answer
+from .messages import linked_message, qa_message
+from .qa import APIError, QAReply, answer
 from .store import Store
+from .reviews import PackageReview, poll_reviews
 
 LOG = logging.getLogger('fa_bot')
 TEMPLATE = ('Usage: version, OS, goal, what you tried.\n'
@@ -46,7 +47,11 @@ class Bot(discord.Client):
                 await self.tree.sync(guild=discord.Object(id=guild))
             except discord.Forbidden:
                 LOG.warning('Command registration unavailable for guild %s; check the bot invitation', guild)
-        self.workers = [asyncio.create_task(self.sync_knowledge()), asyncio.create_task(self.poll_jobs())]
+        latest = self.store.latest_job()
+        if latest and latest['status'] == 'success' and self.store.review(latest['id']):
+            self.add_view(PackageReview(self, latest['id']))
+        self.workers = [asyncio.create_task(self.sync_knowledge()), asyncio.create_task(self.poll_jobs()),
+                        asyncio.create_task(poll_reviews(self))]
 
     async def close(self):
         for task in self.workers:
@@ -82,10 +87,10 @@ class Bot(discord.Client):
         except APIError as error:
             LOG.warning('QA API failure: %s', error)
             if error.region_blocked:
-                return 'QA is unavailable because this deployment cannot access OpenAI in its region. The maintainer must update the deployment.'
-            return 'The QA provider is unavailable. Please contact the maintainer.'
+                return QAReply('QA is unavailable because this deployment cannot access OpenAI in its region. The maintainer must update the deployment.')
+            return QAReply('The QA provider is unavailable. Please contact the maintainer.')
         except TimeoutError:
-            return 'Lookup timed out; please retry shortly.'
+            return QAReply('Lookup timed out; please retry shortly.')
         finally:
             self.busy -= 1
 
@@ -101,7 +106,10 @@ class Bot(discord.Client):
         try:
             async with message.channel.typing():
                 text = await self.ask(message.author.id, message.id, question, context=context)
-            await message.reply(**linked_message(text), mention_author=False)
+            payload = qa_message(text, self, message.author.id, message.channel.id)
+            sent = await message.reply(**payload, mention_author=False)
+            if text.change_request:
+                payload['view'].message = sent
         except ValueError as error:
             await message.reply(str(error), mention_author=False)
         except Exception as error:
@@ -132,6 +140,9 @@ class Bot(discord.Client):
                         self.store.update(job['id'], 'building' if building else 'running', run['id'], run['html_url'])
                         continue
                     if not building and run['conclusion'] == 'success':
+                        if not self.store.review(job['id']):
+                            sha = await self.github.source_receipt(run['id'], job['id'])
+                            self.store.save_source(job['id'], sha)
                         preview = await self.github.find_run(job['id'], build=True)
                         if preview:
                             self.store.update(job['id'], 'building', preview['id'], preview['html_url'])
@@ -147,7 +158,10 @@ class Bot(discord.Client):
                             f'Branch: `{job["branch"]}`\n'
                             'Successful editor CI runs contain the tested package. '
                             'Use /revise with this task ID for another attempt.')
-                    await channel.send(**linked_message(text, label="Build"))
+                    payload = linked_message(text, label='Build')
+                    if building and status == 'success' and self.store.review(job['id']):
+                        payload['view'] = PackageReview(self, job['id'], payload['view'])
+                    await channel.send(**payload)
                     self.store.update(job['id'], status)
                 except Exception as error:
                     LOG.warning('Job polling failed for %s: %s', job['id'], type(error).__name__)
@@ -162,7 +176,7 @@ class Bot(discord.Client):
         if not 10 <= len(request) <= 3500:
             raise ValueError('Please describe the request in 10–3500 characters.')
         if self.store.repair_active():
-            raise ValueError('A repair is already running; please wait for its package result.')
+            raise ValueError('A repair or PR is already running; please wait for its package or maintainer review.')
         if self.store.recent_jobs(interaction.user.id) >= 5:
             raise ValueError('Daily development limit reached. Please try later.')
         key = str(interaction.id)
@@ -193,7 +207,11 @@ class Bot(discord.Client):
                 await interaction.response.send_message('This server is not enabled.', ephemeral=True)
                 return
             await interaction.response.defer(thinking=True)
-            await interaction.followup.send(**linked_message(await self.ask(interaction.user.id, interaction.id, question)))
+            reply = await self.ask(interaction.user.id, interaction.id, question)
+            payload = qa_message(reply, self, interaction.user.id, interaction.channel_id)
+            sent = await interaction.followup.send(**payload, wait=True)
+            if reply.change_request:
+                payload['view'].message = sent
 
         @self.tree.command(name='develop', description='Try a small fix or feature on the shared repair branch')
         async def develop(interaction: discord.Interaction, request: str):

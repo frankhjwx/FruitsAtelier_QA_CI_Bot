@@ -13,6 +13,9 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.db.executescript('''
           PRAGMA journal_mode=WAL;
+          CREATE TABLE IF NOT EXISTS reviews (
+            job_id TEXT PRIMARY KEY, sha TEXT, state TEXT, url TEXT,
+            number INTEGER, created REAL);
           CREATE TABLE IF NOT EXISTS charges (
             id TEXT PRIMARY KEY, month TEXT, kind TEXT, amount REAL, created REAL);
           CREATE TABLE IF NOT EXISTS jobs (
@@ -66,7 +69,7 @@ class Store:
 
     def repair_active(self):
         # An uncertain dispatch may still be executing and must retain the slot.
-        return self.db.execute("SELECT 1 FROM jobs WHERE status IN ('dispatching','queued','running','building','dispatch_uncertain','build_dispatch_uncertain') LIMIT 1").fetchone() is not None
+        return (self.db.execute("SELECT 1 FROM jobs WHERE status IN ('dispatching','queued','running','building','dispatch_uncertain','build_dispatch_uncertain') LIMIT 1").fetchone() is not None or bool(self.active_reviews()))
 
     def latest_job(self):
         return self.db.execute('SELECT * FROM jobs ORDER BY created DESC, rowid DESC LIMIT 1').fetchone()
@@ -74,3 +77,18 @@ class Store:
     def recent_jobs(self, owner):
         return self.db.execute('SELECT count(*) FROM jobs WHERE owner=? AND created>?',
                                (str(owner), time.time() - 86400)).fetchone()[0]
+
+    def save_source(self, key, sha):
+        with self.db:
+            self.db.execute("INSERT OR IGNORE INTO reviews VALUES (?,?,'ready',NULL,NULL,?)", (key, sha, time.time()))
+
+    def review(self, key):
+        return self.db.execute('SELECT * FROM reviews WHERE job_id=?', (key,)).fetchone()
+
+    def active_reviews(self):
+        return self.db.execute("SELECT * FROM reviews WHERE state IN ('requested','uncertain','opened')").fetchall()
+
+    def review_state(self, key, state, url=None, number=None):
+        with self.db:
+            self.db.execute('UPDATE reviews SET state=?,url=coalesce(?,url),number=coalesce(?,number) WHERE job_id=?',
+                            (state, url, number, key))
