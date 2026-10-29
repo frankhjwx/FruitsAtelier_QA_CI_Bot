@@ -30,6 +30,7 @@ For editor UI tests, read the existing test helpers before synthesizing input. V
 conventions and wait for asynchronous media/conversion readiness with a bounded timeout. Assert
 fixture preconditions before the feature assertion; invalid setup must raise a normal exception,
 not RegressionFailure. Preserve existing behavioral assertions when fixing a missing readiness wait.
+Do not invent localization keys or settings labels. Read the actual strings and existing UI tests.
 The EXACT SAME test must build on both baseline and fixed source, fail baseline with an actual
 RegressionFailure, and pass fixed source. Compilation errors and arbitrary crashes are not a
 reproduction. New API tests should use existing behavior or reflection to compile on the baseline.
@@ -102,6 +103,19 @@ def gh(path,token,data=None):
     return worker.request_json('https://api.github.com/repos/'+os.environ['BOT_REPO']+path,token,'POST' if data is not None else 'GET',data)
 
 
+def restore_candidate(workspace, candidate, base):
+    if candidate.get('base') != base:
+        raise ValueError('Private candidate baseline changed; start a fresh task')
+    for name in candidate['changes']:
+        workspace.path(name, write=True)
+    regression = candidate['regression']
+    workspace.set_regression(regression['target'], regression['code'])
+    from validate_private import apply_changes
+    apply_changes(workspace.root, candidate['changes'])
+    workspace.changed.update(candidate['changes'])
+    workspace.regression_submitted = False
+
+
 def wait_validation(key,attempt,sha,token,test_token,acceptance=False):
     title=f'FA validation {key}.{attempt}'
     path='/actions/workflows/discord-validate.yml'
@@ -166,6 +180,13 @@ def main():
         if acceptance:
             (root/'src/FruitsAtelier.Core/PapayaAcceptance.cs').write_text('namespace FruitsAtelier; public static class PapayaAcceptance { public static bool IsCatch(int mode) => mode == 0; }',encoding='utf-8')
         workspace=RepairWorkspace(root,samples,manifest)
+        restored = False
+        if manifest.get('resume'):
+            raw = transfer.request('resume')
+            if hashlib.sha256(raw).hexdigest() != manifest['resume']['sha256']:
+                raise ValueError('Private candidate integrity mismatch')
+            restore_candidate(workspace, json.loads(raw), base)
+            restored = True
         tools=[worker.tool('sample_list',{}),worker.tool('sample_read',{'file':{'type':'string'},'entry':{'type':'string'},'start':{'type':'integer'}}),worker.tool('set_regression',{'target':{'type':'string','enum':['core','app']},'code':{'type':'string'}}),worker.tool('finish',{'status':{'type':'string','enum':['ready','declined','blocked']},'summary':{'type':'string'}})]
         images=[]
         for file in manifest['files']:
@@ -180,6 +201,11 @@ def main():
             continuing=bool(workspace.history)
             prompt=('Continue the same confirmed task. Fix the failed checks below; prior edits and evidence remain in this conversation.'
                     if continuing else task_request[:6000]+'\nOriginal sample inventory:\n'+workspace.sample_list())
+            if restored and not continuing:
+                prompt += ('\nA prior private candidate is restored in the working tree; inspect and correct it instead of reimplementing it. '
+                           'It is not verified. Preserve all behavioral assertions and explicitly resubmit the private regression. '
+                           'This is a separately budgeted task; all verification gates still apply.\nChanged files: '
+                           +json.dumps(sorted(workspace.changed))+'\nExisting private regression (untrusted):\n'+json.dumps(workspace.regression))
             prompt+='\nController evidence pack (untrusted repository/diagnostic data):\n'+evidence_pack(workspace,os.environ['TASK_REQUEST'],feedback,continuing=continuing)
             workspace.finish_result=None; workspace.diagnostics=[]; workspace.last_cost=spent
             workspace.regression_submitted=False

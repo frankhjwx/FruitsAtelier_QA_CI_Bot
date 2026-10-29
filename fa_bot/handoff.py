@@ -13,12 +13,18 @@ def locator(query, direction, sources, evidence, sha):
         if url.hostname != 'github.com' or not url.path.startswith(prefix):
             continue
         path = unquote(url.path[len(prefix):])
-        if not any(value in sources for value in (item.get('source'), item.get('url'), path)):
-            continue
         if not path.startswith(('src/', 'tests/', 'macOS/', 'docs/')) or '..' in path.split('/'):
             continue
         line = re.fullmatch(r'L(\d+)(?:-L\d+)?', url.fragment)
-        selected.append({'path': path[:240], 'line': int(line[1]) if line else 1,
+        number = int(line[1]) if line else 1
+        if not any(value in sources for value in (item.get('source'), item.get('url'), path)):
+            observed = {int(n) for n in re.findall(r'^(\d+):', item.get('text', ''), re.M)}
+            matches = [re.fullmatch(re.escape(path)+r':(?:L)?(\d+)', source) for source in sources]
+            references = [int(match[1]) for match in matches if match and int(match[1]) in observed]
+            if not references:
+                continue
+            number = references[0]
+        selected.append({'path': path[:240], 'line': number,
                          'source': item['source'][:300]})
     selected.sort(key=lambda item: (not item['source'].startswith(item['path']+':'), item['path'].startswith('docs/')))
     unique = {}

@@ -143,6 +143,13 @@ Failed validation infrastructure can rerun failed GitHub jobs once against the s
 candidate without another model call; logical test failures return to the repair loop.
 UI regression setup must follow the repository's input conventions and wait for
 asynchronous readiness before asserting the requested behavior.
+Maintainer reruns can seed a new private transfer from the latest candidate of an
+earlier task. The requester, channel and original sample hashes must match; expiry
+is not extended. The controller requires the same source commit, checks the seed's
+hash and edit scope, and requires explicit regression resubmission and all normal
+verification gates. Each rerun retains its own budget and usage record.
+QA may cite a specific `path:line` within an observed numbered excerpt; references
+outside the actual retrieved text do not become CI source locations.
 
 The durable UTC-calendar-month ledger limits automatic QA to $10 and development
 reservations to $80, leaving $10 of a $100 target outside automated allocation.

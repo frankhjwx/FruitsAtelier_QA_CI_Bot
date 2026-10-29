@@ -65,6 +65,26 @@ class TransferTests(unittest.IsolatedAsyncioTestCase):
     async def test_other_users_cannot_bind_samples(self):
         with self.assertRaises(ValueError): create_transfer(99,2,'1565198087914599998',[3])
 
+    async def test_resume_is_owner_scoped_immutable_and_keeps_original_expiry(self):
+        from fa_bot.transfer import locate
+        headers={'Authorization':'Bearer '+self.token}
+        candidate={'base':'a'*40,'changes':{'src/Test.cs':'class Test {}'},'regression':{'target':'core','code':'test'}}
+        await self.client.put('/ci/'+KEY+'/candidate-1',json=candidate,headers=headers)
+        new='1565198087914599998'
+        with self.assertRaises(ValueError):create_transfer(99,2,new,resume_job=KEY)
+        with self.assertRaises(ValueError):create_transfer(1,3,new,resume_job=KEY)
+        with self.assertRaises(ValueError):create_transfer(1,2,new,resume_job=KEY)
+        token=create_transfer(1,2,new,[3],resume_job=KEY)
+        manifest=await (await self.client.get('/ci/'+new+'/manifest',headers={'Authorization':'Bearer '+token})).json()
+        self.assertLessEqual(manifest['expires'],self.created+TTL)
+        self.assertEqual(manifest['resume']['source_job'],KEY)
+        response=await self.client.get('/ci/'+new+'/resume',headers={'Authorization':'Bearer '+token})
+        self.assertEqual(await response.json(),candidate)
+        test={'Authorization':'Bearer '+manifest['test_token']}
+        self.assertEqual((await self.client.get('/ci/'+new+'/resume',headers=test)).status,403)
+        self.assertNotIn('resume',await (await self.client.get('/ci/'+new+'/manifest',headers=test)).json())
+        self.assertEqual(locate(new)[0].joinpath('resume.json').read_bytes(),locate(KEY)[0].joinpath('candidate-1.json').read_bytes())
+
     async def test_final_diagnostics_are_private_immutable_and_expire(self):
         headers={'Authorization':'Bearer '+self.token}
         endpoint='/ci/'+KEY+'/'

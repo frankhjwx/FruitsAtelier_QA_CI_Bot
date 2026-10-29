@@ -22,12 +22,22 @@ def ci_root():
     return root_path().parent / 'ci-transfers'
 
 
-def create_transfer(owner, channel, key, attachment_ids=()):
+def create_transfer(owner, channel, key, attachment_ids=(), resume_job=None):
     root = ci_root()
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     cleanup(root)
     sources = []
     created = time.time()
+    resume = None
+    if resume_job:
+        previous, previous_access = locate(str(resume_job))
+        if previous.name.split('_')[-3:-1] != [str(int(owner)), str(int(channel))]:
+            raise ValueError('Only the original requester and channel can resume a private candidate')
+        candidates = sorted(previous.glob('candidate-[1-3].json'))
+        if not candidates or candidates[-1].is_symlink() or candidates[-1].stat().st_size > CANDIDATE_LIMIT:
+            raise ValueError('No resumable private candidate is available')
+        resume = candidates[-1]
+        created = min(created, previous_access['expires'] - TTL)
     for mid in list(dict.fromkeys(attachment_ids))[:3]:
         folders = sorted(root_path().glob(f'*_{int(owner)}_{int(channel)}_{int(mid)}'))
         valid = [f for f in folders if not f.is_symlink() and time.time()-int(f.name.split('_')[0])/1000 < TTL]
@@ -57,6 +67,12 @@ def create_transfer(owner, channel, key, attachment_ids=()):
             os.chmod(folder/name_on_disk,0o600)
             files.append({'file':name_on_disk,'name':name,'sha256':hashlib.sha256((folder/name_on_disk).read_bytes()).hexdigest(),'size':source.stat().st_size})
         access={'job':str(key),'expires':created+TTL,'edit':edit,'test':test,'files':files}
+        if resume:
+            if sorted(f['sha256'] for f in files) != sorted(f['sha256'] for f in previous_access['files']):
+                raise ValueError('Resuming requires the same original samples')
+            body = resume.read_bytes()
+            store_immutable(folder/'resume.json', body)
+            access['resume'] = {'sha256':hashlib.sha256(body).hexdigest(), 'source_job':str(resume_job)}
         (folder/'access.json').write_text(json.dumps(access),encoding='utf-8')
         os.chmod(folder/'access.json',0o600)
     except BaseException:
@@ -87,8 +103,14 @@ async def transfer(request):
         raise web.HTTPForbidden()
     if request.method=='GET' and item=='manifest':
         result={k:data[k] for k in ('job','expires','files')}
-        if role=='edit': result['test_token']=data['test']
+        if role=='edit':
+            result['test_token']=data['test']
+            if 'resume' in data: result['resume']=data['resume']
         return web.json_response(result,headers={'Cache-Control':'no-store'})
+    if request.method=='GET' and item=='resume':
+        if role!='edit': raise web.HTTPForbidden()
+        if 'resume' not in data: raise web.HTTPNotFound()
+        return web.Response(body=await asyncio.to_thread((folder/'resume.json').read_bytes),content_type='application/json',headers={'Cache-Control':'no-store'})
     if request.method=='GET' and item in {f['file'] for f in data['files']}:
         return web.Response(body=await asyncio.to_thread((folder/item).read_bytes),headers={'Cache-Control':'no-store'})
     if not re.fullmatch(r'(candidate-[1-3]|diagnostic-[1-3]|result-[1-3]-(windows|macos))',item):

@@ -10,6 +10,20 @@ from fa_bot.handoff import encode
 
 
 class BenchmarkTests(unittest.TestCase):
+    def test_restored_candidate_is_pinned_scoped_and_requires_resubmission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            ws=repair_ci.RepairWorkspace(root,root,{'files':[]})
+            candidate={'base':'a'*40,'changes':{'src/Test.cs':'class Test {}'},'regression':{'target':'core','code':'test'}}
+            with self.assertRaises(ValueError):repair_ci.restore_candidate(ws,candidate,'b'*40)
+            self.assertFalse((root/'src/Test.cs').exists())
+            with self.assertRaises(ValueError):repair_ci.restore_candidate(ws,{**candidate,'changes':{'.github/workflows/run.yml':'unsafe'}},'a'*40)
+            repair_ci.restore_candidate(ws,candidate,'a'*40)
+            self.assertEqual(ws.changed,{'src/Test.cs'})
+            self.assertIsNone(ws.handoff_candidate())
+            ws.set_regression('core','corrected test')
+            self.assertEqual(ws.handoff_candidate()['status'],'ready')
+
     def test_verified_real_benchmark_never_publishes_or_injects_synthetic_source(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)

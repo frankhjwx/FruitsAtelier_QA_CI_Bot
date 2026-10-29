@@ -60,6 +60,15 @@ class LocalizationTests(unittest.IsolatedAsyncioTestCase):
         original='A requirement '*300
         self.assertEqual(decode(encode(original, {'query':'time'}))[0], original)
 
+    def test_specific_line_reference_must_be_in_observed_excerpt(self):
+        sha='a'*40
+        evidence=[{'source':'src/Preview.cs:1','url':f'https://github.com/frankhjwx/FruitsAtelier/blob/{sha}/src/Preview.cs#L1',
+                   'text':'17: class Preview\n18: public bool Visible;'}]
+        result=locator('preview','inspect',['src/Preview.cs:18'],evidence,sha)
+        self.assertEqual(result['locations'][0]['line'],18)
+        self.assertEqual(locator('preview','inspect',['src/Preview.cs:99'],evidence,sha)['locations'],[])
+        self.assertEqual(locator('preview','inspect',['src/Unknown.cs:18'],evidence,sha)['locations'],[])
+
     def test_ci_reads_located_code_only_at_matching_commit(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
