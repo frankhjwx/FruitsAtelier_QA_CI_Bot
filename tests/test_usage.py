@@ -5,6 +5,14 @@ import worker
 
 
 class UsageBudgetTests(unittest.TestCase):
+    def test_measured_cache_reads_and_writes_are_not_double_counted(self):
+        usage={'input_tokens':12000,'output_tokens':100,
+               'input_tokens_details':{'cached_tokens':4000,'cache_write_tokens':7000,
+                 'cache_write_tokens_details':{'ttl_30m_tokens':3000,'ttl_12h_tokens':4000}}}
+        self.assertAlmostEqual(worker.usage_cost(usage,.1),.0309)
+        usage['input_tokens_details']['cached_tokens']=13000
+        self.assertAlmostEqual(worker.usage_cost(usage,.1),.031)
+
     def test_can_finish_after_twelve_queries_within_budget(self):
         with tempfile.TemporaryDirectory() as folder:
             ws = worker.Workspace(folder)

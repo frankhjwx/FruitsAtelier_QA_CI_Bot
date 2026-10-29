@@ -87,8 +87,11 @@ tokens respectively. Conservative reservations include a cache-write margin.
 The development worker preserves controller messages in the conversation prefix,
 marks reusable message boundaries, and retains reasoning across turns for cache
 reuse. Usage diagnostics include cached reads and cache writes by lifetime.
-The budget guard still charges conservative token rates without assuming a cache
-hit; reported budget cost is not the final API invoice.
+Completed calls use Standard Sol prices when cache read/write usage is complete:
+$2 ordinary input, $0.10 cached input, $2.50 for 30-minute writes, $5 for 12-hour
+writes, and $10 output per million tokens. Incomplete or inconsistent cache usage
+falls back to conservative rates. Future reservations never assume cache hits;
+reported budget cost is an estimate, not the final API invoice.
 See the [official model pages](https://developers.openai.com/api/docs/models).
 
 The durable UTC-calendar-month ledger limits automatic QA to $10 and development
@@ -96,7 +99,7 @@ reservations to $80, leaving $10 of a $100 target outside automated allocation.
 QA reserves $0.02 before a request and settles successful calls using reported
 usage. Failures retain the reservation. Development reserves $0.50 per attempt;
 unused development reservation is not refunded. PR creation uses no model call. The worker checks each model call against the same per-attempt ceiling.
-Completed calls use reported token counts at conservative rates. The next call
+Completed calls use reported token counts and cache breakdowns. The next call
 reserves the maximum output plus reported prior tokens and a UTF-8 byte bound
 for new tool results; missing usage retains the full conservative reservation. Some requests will exceed this small-change budget and stop without a
 package. Each user can make 200 QA requests and 100 development attempts per rolling

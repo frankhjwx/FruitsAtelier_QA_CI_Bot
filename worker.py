@@ -228,6 +228,24 @@ def cached_input(history):
     return result
 
 
+def usage_cost(usage, reserve):
+    """Standard Sol pricing; incomplete usage retains conservative accounting."""
+    inp, out = usage.get('input_tokens'), usage.get('output_tokens')
+    valid = lambda value: type(value) is int and value >= 0
+    if not valid(inp) or not valid(out):
+        return reserve
+    fallback = (inp * 2.50 + out * 10) / 1_000_000
+    details = usage.get('input_tokens_details') or {}
+    reads, writes = details.get('cached_tokens'), details.get('cache_write_tokens')
+    lifetimes = details.get('cache_write_tokens_details') or {}
+    short, long = lifetimes.get('ttl_30m_tokens'), lifetimes.get('ttl_12h_tokens')
+    if not all(valid(value) for value in (reads,writes,short,long)):
+        return fallback
+    if reads+writes > inp or short+long != writes:
+        return fallback
+    return ((inp-reads-writes)*2 + reads*.10 + short*2.50 + long*5 + out*10) / 1_000_000
+
+
 def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instructions="", image_inputs=()):
     tools = [tool('read', {'path': {'type': 'string'}, 'start': {'type': 'integer'}, 'count': {'type': 'integer'}}),
              tool('search', {'query': {'type': 'string'}, 'path': {'type': 'string'}, 'start': {'type': 'integer'}}),
@@ -253,7 +271,7 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
         # Retain the exact state that preceded each response; deleting it breaks the cache prefix.
         history.append(state)
         payload = {'model': MODEL, 'instructions': instructions, 'input': cached_input(history),
-                   'prompt_cache_options': {'mode':'implicit', 'ttl':'30m'},
+                   'prompt_cache_options': {'mode':'implicit', 'ttl':'30m'}, 'service_tier':'default',
                    'include': ['reasoning.encrypted_content'],
                    'tools': tools, 'store': False, 'reasoning': {'effort': 'low', 'context':'all_turns'},
                    'max_output_tokens': 3500}
@@ -273,11 +291,11 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
         input_tokens, output_tokens = usage.get('input_tokens'), usage.get('output_tokens')
         measured = (type(input_tokens) is int and input_tokens >= 0 and
                     type(output_tokens) is int and output_tokens >= 0)
-        # Completed requests use reported tokens at conservative rates; missing usage keeps the full reserve.
-        used += ((input_tokens * 2.50 + output_tokens * 10) / 1_000_000) if measured else reserve
+        # Cache discounts require complete, consistent usage; future calls never assume a hit.
+        used += usage_cost(usage,reserve)
         workspace.last_cost = used
         next_input_bound = input_tokens + output_tokens + 2000 if measured else None
-        print(f'Model turn {turn+1}; conservative usage cost ${used:.3f}', flush=True)
+        print(f'Model turn {turn+1}; accounted usage cost ${used:.3f}', flush=True)
         print('Usage diagnostic: ' + json.dumps({'turn':turn+1,'input_tokens':input_tokens,
               'output_tokens':output_tokens,'cached_input_tokens':usage.get('input_tokens_details',{}).get('cached_tokens'),
               'cache_write_tokens':usage.get('input_tokens_details',{}).get('cache_write_tokens'),
