@@ -47,9 +47,9 @@ class Transfer:
                 print(f'Private transfer retry {attempt + 1}/{attempts - 1}: {type(error).__name__}', flush=True)
                 time.sleep(2 ** attempt)
 
-    def _request_once(self,item,data=None):
+    def _request_once(self,item,data=None,timeout=30):
         if not re.fullmatch(r'[A-Za-z0-9_.-]+',item): raise ValueError('Invalid transfer resource')
-        connection=http.client.HTTPSConnection(self.host,self.port,context=ssl._create_unverified_context(),timeout=30)
+        connection=http.client.HTTPSConnection(self.host,self.port,context=ssl._create_unverified_context(),timeout=timeout)
         try:
             connection.connect()
             actual=hashlib.sha256(connection.sock.getpeercert(binary_form=True)).hexdigest()
@@ -67,6 +67,13 @@ class Transfer:
 
     def json(self,item,data=None):
         return json.loads(self.request(item,data))
+
+    def progress(self,scope,phase,attempt):
+        try:
+            self._request_once('progress-'+scope,{'phase':phase,'attempt':attempt},timeout=5)
+        except Exception as error:
+            # Status reporting must not stop a repair or repeat a model call.
+            print(f'Progress report unavailable: {type(error).__name__}',flush=True)
 
     def download(self,root,minimum_remaining=1800):
         manifest=self.json('manifest')

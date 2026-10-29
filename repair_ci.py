@@ -38,8 +38,8 @@ Subsequent rounds receive private actual runner results. Fix the cause and prese
 intent. If this cannot be automatically reproduced in the supported runner, stop honestly without
 claiming it fixed. Do not publish or package; the controller does that only after validation passes.
 Make all required source edits first. Call set_regression LAST to submit the candidate to the harness.
-At the end of that tool batch the harness takes over automatically: baseline/fixed comparison,
-regression suites and packaging need no further AI call or confirmation. Even if a previous test
+At the end of that tool batch the harness takes over automatically: baseline/fixed comparison
+and packaging need no further AI call or confirmation. Even if a previous test
 is unchanged, resubmit it with set_regression after repairing a failed candidate.
 Use finish only to decline out-of-scope work or report a specific blocker with its concrete reason.
 Do not end with a plan, permission request, or promise to work later. Do not claim tests have passed.
@@ -188,6 +188,7 @@ def main():
         if not acceptance and not ready(localization):
             raise RuntimeError('Repairs require QA implementation localization before dispatch')
         for attempt in range(1,3):
+            transfer.progress('edit','editing',attempt)
             print(f'Private repair round {attempt}; original sample count {len(manifest["files"])}.',flush=True)
             continuing=bool(workspace.history)
             prompt=('Continue the same confirmed task. Fix the failed checks below; prior edits and evidence remain in this conversation.'
@@ -221,6 +222,7 @@ def main():
                     raise RuntimeError('Original sample content must not be published')
             candidate={'base':base,'changes':changes,'regression':workspace.regression}
             transfer.json(f'candidate-{attempt}',candidate)
+            transfer.progress('edit','waiting_validation',attempt)
             wait_validation(key,attempt,base,bot_token,manifest['test_token'],acceptance)
             results=[transfer.json(f'result-{attempt}-{platform}') for platform in ('windows',)]
             digest=hashlib.sha256(workspace.regression['code'].encode()).hexdigest()
@@ -231,10 +233,12 @@ def main():
                     Path('acceptance.json').write_text(json.dumps({'verified':True,'attempts':attempt,'sample_count':len(hashes),'cost':spent}),encoding='utf-8')
                     print(f'Acceptance passed after {attempt} rounds; no public source was changed.',flush=True)
                     return
-                sha=worker.publish(workspace,branch,key,'Sample-backed regression passed on baseline/fixed comparison; Windows checks passed; macOS validation is disabled.',token,base)
+                transfer.progress('edit','publishing',attempt)
+                sha=worker.publish(workspace,branch,key,'Targeted Windows regression passed on baseline/fixed comparison; full regression suites run on the PR; macOS validation is disabled.',token,base)
                 with open(os.environ['GITHUB_OUTPUT'],'a') as out: out.write(f'commit={sha}\n')
                 receipt={'job_id':key,'sha':sha,'regression_verified':True,'attempts':attempt,'sample_count':len(hashes),'test_sha256':digest,'cost':spent}
                 Path('source.json').write_text(json.dumps(receipt),encoding='utf-8')
+                transfer.progress('edit','packaging',attempt)
                 print('Private regression verified; ready for public packaging.',flush=True)
                 return
             feedback=failure_feedback(results)

@@ -2,6 +2,9 @@ import io
 import json
 import re
 import zipfile
+import time
+import math
+from datetime import datetime
 import aiohttp
 from .config import SOURCE_REPO
 
@@ -9,6 +12,7 @@ from .config import SOURCE_REPO
 class GitHub:
     def __init__(self, session, token, repo):
         self.session, self.repo = session, repo
+        self.duration_cache = {}
         self.headers = {'Authorization': f'Bearer {token}',
                         'Accept': 'application/vnd.github+json',
                         'X-GitHub-Api-Version': '2022-11-28'}
@@ -40,6 +44,35 @@ class GitHub:
     async def run(self, run_id, build=False):
         repo = SOURCE_REPO if build else self.repo
         return await self.request('GET', f'/repos/{repo}/actions/runs/{run_id}')
+
+    async def run_jobs(self, run_id, build=False):
+        repo = SOURCE_REPO if build else self.repo
+        return (await self.request('GET', f'/repos/{repo}/actions/runs/{int(run_id)}/jobs?per_page=100'))['jobs']
+
+    async def duration_range(self, build=False):
+        cached = self.duration_cache.get(build)
+        if cached and time.monotonic()-cached[0] < 300:
+            return cached[1]
+        repo = SOURCE_REPO if build else self.repo
+        workflow = 'discord-preview.yml' if build else 'discord-develop.yml'
+        data = await self.request('GET', f'/repos/{repo}/actions/workflows/{workflow}/runs?status=success&per_page=10')
+        durations = []
+        for run in data['workflow_runs']:
+            if run.get('conclusion') != 'success':
+                continue
+            try:
+                duration = (datetime.fromisoformat(run['updated_at'].replace('Z','+00:00')) -
+                            datetime.fromisoformat(run['run_started_at'].replace('Z','+00:00'))).total_seconds()
+                if 0 < duration <= 7200:
+                    durations.append(duration)
+            except (KeyError, TypeError, ValueError):
+                continue
+        durations.sort()
+        estimate = None
+        if len(durations) >= 3:
+            estimate = (durations[int((len(durations)-1)*.2)], durations[math.ceil((len(durations)-1)*.8)])
+        self.duration_cache[build] = (time.monotonic(), estimate)
+        return estimate
 
     async def package_url(self, run_id, key):
         data = await self.request('GET', f'/repos/{SOURCE_REPO}/actions/runs/{int(run_id)}/artifacts?per_page=100')

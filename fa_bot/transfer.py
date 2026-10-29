@@ -13,6 +13,7 @@ import tempfile
 import time
 from aiohttp import web
 from .attachments import TTL, MAX_BATCH, root_path, cleanup
+from .task_stages import EDIT_STAGES, VALIDATION_STAGES
 
 
 CANDIDATE_LIMIT = 8_000_000
@@ -113,6 +114,26 @@ async def transfer(request):
         return web.Response(body=await asyncio.to_thread((folder/'resume.json').read_bytes),content_type='application/json',headers={'Cache-Control':'no-store'})
     if request.method=='GET' and item in {f['file'] for f in data['files']}:
         return web.Response(body=await asyncio.to_thread((folder/item).read_bytes),headers={'Cache-Control':'no-store'})
+    if re.fullmatch(r'progress-(edit|validation-[12])',item):
+        if request.method=='PUT':
+            editing = item=='progress-edit'
+            if role != ('edit' if editing else 'test'): raise web.HTTPForbidden()
+            body=await request.read()
+            if len(body)>256: raise web.HTTPRequestEntityTooLarge(max_size=256,actual_size=len(body))
+            payload=json.loads(body)
+            stages=EDIT_STAGES if editing else VALIDATION_STAGES
+            if (not isinstance(payload,dict) or set(payload)!={'phase','attempt'}
+                    or not isinstance(payload['phase'],str) or payload['phase'] not in stages
+                    or type(payload['attempt']) is not int or payload['attempt'] not in (1,2)
+                    or (not editing and payload['attempt']!=int(item[-1]))):
+                raise web.HTTPBadRequest()
+            await asyncio.to_thread(store_progress,folder/(item+'.json'),payload)
+            return web.json_response({'stored':True})
+        if request.method=='GET':
+            path=folder/(item+'.json')
+            if not path.is_file(): raise web.HTTPNotFound()
+            return web.Response(body=await asyncio.to_thread(path.read_bytes),content_type='application/json',headers={'Cache-Control':'no-store'})
+        raise web.HTTPMethodNotAllowed(request.method,['GET','PUT'])
     if not re.fullmatch(r'(candidate-[1-3]|diagnostic-[1-3]|result-[1-3]-(windows|macos))',item):
         raise web.HTTPNotFound()
     if item.startswith('diagnostic') and role!='edit':
@@ -153,6 +174,21 @@ def store_immutable(path, body):
                 raise web.HTTPConflict()
     finally:
         temp.unlink(missing_ok=True)
+
+
+def store_progress(path, payload):
+    now=time.time()
+    previous=json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+    started=previous.get('started',now) if all(previous.get(k)==payload[k] for k in ('phase','attempt')) else now
+    body={**payload,'started':started,'updated':now}
+    with tempfile.NamedTemporaryFile(dir=path.parent,delete=False) as output:
+        temp=Path(output.name)
+        try:
+            output.write(json.dumps(body).encode('utf-8'))
+            output.close()
+            os.replace(temp,path)
+        finally:
+            temp.unlink(missing_ok=True)
 
 
 async def start_transfer_server():

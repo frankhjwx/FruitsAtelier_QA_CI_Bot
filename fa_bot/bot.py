@@ -21,7 +21,7 @@ from .qa import APIError, QAReply, answer
 from .handoff import encode, decode, ready
 from .store import Store
 from .reviews import PackageReview, poll_reviews
-from .progress import bind_progress, update_progress, edit_progress
+from .progress import bind_progress, update_progress, edit_progress, progress_content
 
 LOG = logging.getLogger('fa_bot')
 TEMPLATE = ('Usage: version, OS, goal, what you tried.\n'
@@ -170,7 +170,7 @@ class Bot(discord.Client):
                     if run['status'] != 'completed':
                         phase = 'building' if building else ('running' if run['status'] == 'in_progress' else 'queued')
                         self.store.update(job['id'], phase, run['id'], run['html_url'])
-                        await update_progress(self, self.store.job(job['id']))
+                        await update_progress(self, self.store.job(job['id']),run=run)
                         continue
                     if not building and run['conclusion'] == 'success':
                         if not self.store.review(job['id']):
@@ -181,7 +181,7 @@ class Bot(discord.Client):
                             self.store.update(job['id'], 'building', preview['id'], preview['html_url'])
                         elif time.time() - job['created'] > 1800:
                             self.store.update(job['id'], 'build_dispatch_uncertain')
-                        await update_progress(self, self.store.job(job['id']))
+                        await update_progress(self, self.store.job(job['id']),run=preview)
                         continue
                     status = run['conclusion']
                     package = await self.github.package_url(run['id'], job['id']) if building and status == 'success' else None
@@ -321,7 +321,12 @@ class Bot(discord.Client):
                     payload = action_message('This test build is no longer available. Please ask the maintainer for a new build.')
                 await interaction.followup.send(**payload, ephemeral=True)
             else:
-                await interaction.response.send_message(f'Task status: {job["status"]}', ephemeral=True)
+                if job['status'] in ('dispatching','queued','running','building','dispatch_uncertain','build_dispatch_uncertain'):
+                    await interaction.response.defer(ephemeral=True)
+                    run=await self.github.run(job['run_id'],build=job['status']=='building') if job['run_id'] else None
+                    await interaction.followup.send(await progress_content(self,job,run),ephemeral=True)
+                else:
+                    await interaction.response.send_message(f'Task status: {job["status"]}', ephemeral=True)
 
         @self.tree.error
         async def error(interaction, error):

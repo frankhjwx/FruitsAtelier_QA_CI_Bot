@@ -66,7 +66,7 @@ class DevelopmentOffer(discord.ui.View):
             return
         self.pending = True
         try:
-            await interaction.response.defer(thinking=True, ephemeral=True)
+            await interaction.response.defer(thinking=True)
             try:
                 options = {'attachment_ids': self.attachment_ids} if self.attachment_ids else {}
                 if self.localization:
@@ -78,10 +78,10 @@ class DevelopmentOffer(discord.ui.View):
             self.submitted = True
             self.confirm_button.disabled = True
             self.stop()
-            await interaction.followup.send(status, ephemeral=True)
+            sent = await interaction.followup.send(status, wait=True)
+            await bind_progress(self.bot, str(interaction.id), sent)
             if interaction.message:
-                if not await bind_progress(self.bot, str(interaction.id), interaction.message):
-                    await interaction.message.edit(view=self)
+                await interaction.message.edit(view=self)
         finally:
             self.pending = False
 

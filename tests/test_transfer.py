@@ -56,6 +56,30 @@ class TransferTests(unittest.IsolatedAsyncioTestCase):
         response=await self.client.put(endpoint+'candidate-2',json={'data':'x'*CANDIDATE_LIMIT},headers=headers)
         self.assertEqual(response.status,413)
 
+    async def test_progress_is_role_scoped_bounded_replaceable_and_expires(self):
+        endpoint='/ci/'+KEY+'/'
+        edit={'Authorization':'Bearer '+self.token}
+        manifest=await (await self.client.get(endpoint+'manifest',headers=edit)).json()
+        test={'Authorization':'Bearer '+manifest['test_token']}
+        payload={'phase':'editing','attempt':1}
+        self.assertEqual((await self.client.put(endpoint+'progress-edit',json=payload,headers=test)).status,403)
+        self.assertEqual((await self.client.put(endpoint+'progress-edit',json=payload,headers=edit)).status,200)
+        before=await (await self.client.get(endpoint+'progress-edit',headers=edit)).json()
+        await self.client.put(endpoint+'progress-edit',json=payload,headers=edit)
+        after=await (await self.client.get(endpoint+'progress-edit',headers=edit)).json()
+        self.assertEqual(before['started'],after['started'])
+        self.assertGreaterEqual(after['updated'],before['updated'])
+        payload={'phase':'waiting_validation','attempt':2}
+        self.assertEqual((await self.client.put(endpoint+'progress-edit',json=payload,headers=edit)).status,200)
+        self.assertEqual((await (await self.client.get(endpoint+'progress-edit',headers=edit)).json())['attempt'],2)
+        self.assertEqual((await self.client.put(endpoint+'progress-edit',json={**payload,'private':'original sample'},headers=edit)).status,400)
+        self.assertEqual((await self.client.put(endpoint+'progress-edit',json={'phase':'sample content','attempt':1},headers=edit)).status,400)
+        self.assertEqual((await self.client.put(endpoint+'progress-validation-2',json={'phase':'fixed','attempt':2},headers=edit)).status,403)
+        self.assertEqual((await self.client.put(endpoint+'progress-validation-2',json={'phase':'fixed','attempt':1},headers=test)).status,400)
+        self.assertEqual((await self.client.put(endpoint+'progress-validation-2',json={'phase':'fixed','attempt':2},headers=test)).status,200)
+        with patch('fa_bot.transfer.time.time',return_value=self.created+TTL+1):
+            self.assertEqual((await self.client.get(endpoint+'progress-edit',headers=edit)).status,410)
+
     async def test_expiry_covers_original_and_transfer_without_extension(self):
         with patch('fa_bot.transfer.time.time',return_value=self.created+TTL+1):
             response=await self.client.get('/ci/'+KEY+'/manifest',headers={'Authorization':'Bearer '+self.token})
@@ -150,6 +174,13 @@ class DiagnosticTests(unittest.TestCase):
 
 
 class TransferRetryTests(unittest.TestCase):
+    def test_progress_failure_is_short_and_never_retries_the_task(self):
+        from ci_transfer import Transfer
+        client=object.__new__(Transfer)
+        with patch.object(client,'_request_once',side_effect=TimeoutError()) as request:
+            client.progress('edit','editing',1)
+        request.assert_called_once_with('progress-edit',{'phase':'editing','attempt':1},timeout=5)
+
     def test_transient_reads_and_identical_writes_retry(self):
         from ci_transfer import Transfer
         client=object.__new__(Transfer)

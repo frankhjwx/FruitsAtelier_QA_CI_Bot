@@ -2,8 +2,9 @@
 
 Papaya connects Discord directly to the OpenAI Responses API. Its server handles
 questions, evidence retrieval and job tracking. Its private GitHub workflow
-handles source changes and private sample-backed regression. The public FruitsAtelier
-repository's GitHub-hosted workflow repeats release checks and builds experimental Windows packages.
+handles source changes and targeted sample-backed regression. The public FruitsAtelier
+repository's GitHub-hosted workflow builds and verifies experimental Windows packages.
+Full desktop regression suites run when a PR is submitted.
 
 This is an independent repository. Its default `main` branch contains
 the Bot and editing workflow. The editor repository is read at `dev`; development tasks publish
@@ -51,9 +52,16 @@ or repeated clicks cannot dispatch the same offer twice. A busy repair slot
 leaves the offer available to retry until it expires. `/develop` and `/revise`
 remain explicit command shortcuts.
 
-Accepted development tasks reuse the QA confirmation message (or the command's
-acceptance reply) for progress. Papaya edits that message about every two minutes
-with the current phase, elapsed time and available Windows validation results.
+Accepted development tasks create one public acceptance message for progress.
+The original QA answer stays visible with its confirmation button disabled.
+Papaya edits the acceptance message about every 20 seconds with the current phase,
+elapsed time, estimated remaining time and available Windows validation results.
+Phases distinguish source editing, original/fixed comparison, repair attempts,
+publishing, build preparation, package verification and upload. Estimates use the
+range of recent successful workflow durations when at least three are available;
+otherwise they show a rough initial 5–20 minute range. Runner queue time is unknown,
+and overruns explicitly stop promising a countdown. Estimates are not deadlines.
+Progress reporting reads workflow metadata and bounded phase reports; it makes no model calls.
 The final package or failure result replaces the same message. Message IDs persist
 across restarts; deleted or inaccessible messages do not cause replacement posts.
 Progress uses controller state and private validation results, without model calls.
@@ -187,14 +195,14 @@ history. Code search returns signatures and locations; source bodies are read on
 Model instructions remain stable; changing budget and workspace state are appended to the
 request. Cache reuse is measured from API usage and is not assumed in budget accounting.
 Private validation runs on Windows only. Publication requires the same-test
-baseline failure, fixed-source success, original sample hashes and full Windows
-regression suites. macOS validation is disabled and is not reported as passed.
+baseline failure, fixed-source success and original sample hashes. Full desktop
+regression suites run on the PR. macOS validation is disabled and is not reported as passed.
 Private CI logs record tool names, argument hashes, result sizes and error types,
 without tool bodies or original attachment contents.
 The editing AI submits a candidate by calling `set_regression` after its source edits.
 At the end of that tool batch the harness takes over without another model call,
-even when there is no remaining AI budget. It runs baseline/fixed checks, regression
-suites and packaging. Only failed validation returns to the AI, within the same
+even when there is no remaining AI budget. It runs targeted baseline/fixed checks
+and packaging. Only failed validation returns to the AI, within the same
 $0.50 task budget. Each repair round must resubmit its regression to avoid handing
 off a partially edited candidate with an earlier round's test.
 The explicit `finish` status remains available for declined or blocked work.
@@ -398,8 +406,10 @@ writes a private C# regression using the real Core or Windows App APIs. A separa
 Windows runner builds the same test against the unchanged baseline and candidate.
 Baseline compilation failure is not a reproduction: the test must compile, raise
 an explicit behavioral regression failure before the fix, and pass after it.
-Supplied samples must be accessed through the private harness. Windows regression
-suites also run. macOS checks are disabled. The controller verifies sample
+Supplied samples must be accessed through the private harness. The private gate
+builds and runs only the targeted test against both versions. The preview workflow
+builds and verifies the Windows package; full desktop regression suites run on the PR.
+macOS checks are disabled. The controller verifies sample
 hashes and test identity before publishing source and requesting a public package.
 This does not establish manual GUI, audio perception or device-specific behavior.
 Unsupported or unreproduced cases are reported as unverified, never repaired.

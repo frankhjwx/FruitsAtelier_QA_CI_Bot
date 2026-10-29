@@ -1,4 +1,4 @@
-"""Unprivileged runner: exact-sample baseline/fix comparison and regression suites."""
+"""Unprivileged runner: exact-sample baseline/fix comparison."""
 import hashlib
 import json
 import os
@@ -130,11 +130,13 @@ def main():
                 return
         if platform=='windows':
             for label,source in [('baseline',baseline),('fixed',fixed)]:
+                transfer.progress(f'validation-{attempt}','preparing_'+label,attempt)
                 if candidate['regression']['target']=='app':
                     print(f'Preparing {label} application dependencies.',flush=True)
                     prep=run([sys.executable,'scripts/Build-MapsetVerifier.py'],source,deadline)
                     if prep['exit']!=0: result[label]={'prepare':prep}; return
                 print(f'Running {label} sample regression.',flush=True)
+                transfer.progress(f'validation-{attempt}',label,attempt)
                 stage_samples=root/(label+'-samples')
                 stage_samples.mkdir()
                 for entry in manifest['files']:
@@ -150,18 +152,6 @@ def main():
             before=result['baseline']; after=result['fixed']
             if (before.get('run') or {}).get('exit')!=42 or (after.get('run') or {}).get('exit')!=0:
                 return
-            print('Preparing fixed-source regression suites.',flush=True)
-            prep=run([sys.executable,'scripts/Build-MapsetVerifier.py'],fixed,deadline)
-            if prep['exit']!=0: result['prepare']=prep; return
-            build=run(['dotnet','build','FruitsAtelier.sln','-c','Release','-p:RestoreLockedMode=true','--nologo'],fixed,deadline)
-            result['build']=build
-            if build['exit']!=0: return
-            results=[]
-            for suite,args in [('Core',[]),('Gameplay',[]),('App',[]),('Skinning',[]),('SkinArchive',[]),('Formats',['--skip-external-fixtures']),('Audio',['--hitsound-check']),('App',['--mapset-verifier-engine-check'])]:
-                check=run(['dotnet','run','--no-build','--project',f'tests/FruitsAtelier.{suite}.Tests','-c','Release']+(['--']+args if args else []),fixed,deadline)
-                results.append({'suite':suite,**check})
-                result['suites']=results
-                if check['exit']!=0: return
         else:
             print('Preparing macOS regression suites.',flush=True)
             prep=run([sys.executable,'scripts/Build-MapsetVerifier.py'],fixed,deadline)
@@ -175,7 +165,9 @@ def main():
         result['error']=type(error).__name__
     finally:
         # Test output may include user data: return only through the expiring private endpoint.
-        try: transfer.json(f'result-{attempt}-{platform}',result)
+        try:
+            transfer.json(f'result-{attempt}-{platform}',result)
+            transfer.progress(f'validation-{attempt}','finished',attempt)
         finally: shutil.rmtree(root,ignore_errors=True)
         print('Private validation passed.' if result['passed'] else 'Private validation needs further repair.',flush=True)
 

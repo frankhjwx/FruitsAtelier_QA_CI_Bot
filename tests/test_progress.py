@@ -4,7 +4,8 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace as NS
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, create_autospec
+import discord
 
 from fa_bot.progress import bind_progress, edit_progress, progress_text, update_progress
 from fa_bot.store import Store
@@ -32,10 +33,10 @@ class ProgressTests(unittest.IsolatedAsyncioTestCase):
         self.store.db.close()
         self.store = Store(self.path)
         self.bot.store = self.store
-        with patch('fa_bot.progress.time.time', return_value=1119):
+        with patch('fa_bot.progress.time.time', return_value=1019):
             await update_progress(self.bot, self.store.job(key))
         self.assertEqual(self.message.edit.await_count, 1)
-        with patch('fa_bot.progress.time.time', return_value=1120):
+        with patch('fa_bot.progress.time.time', return_value=1020):
             await update_progress(self.bot, self.store.job(key))
         self.assertEqual(self.message.edit.await_count, 2)
         await edit_progress(self.bot, self.store.job(key), {'content': 'Complete', 'view': None})
@@ -50,6 +51,40 @@ class ProgressTests(unittest.IsolatedAsyncioTestCase):
             await update_progress(self.bot, self.store.job(key))
         self.message.edit.assert_awaited_once()
         self.assertEqual(self.store.progress(key)['message_id'], '99')
+
+    async def test_progress_and_completion_use_real_partial_message_edit_signature(self):
+        self.message=create_autospec(discord.PartialMessage,instance=True)
+        self.message.id=99
+        key='123456789012345'
+        await bind_progress(self.bot,key,self.message)
+        self.message.edit.assert_awaited_once()
+        self.assertIn('estimated',self.message.edit.call_args.kwargs['content'].lower())
+        await edit_progress(self.bot,self.store.job(key),{
+            'content':'Your test build is ready.', 'view':None, 'suppress_embeds':True})
+        self.assertEqual(self.message.edit.await_count,2)
+        self.assertNotIn('suppress_embeds',self.message.edit.call_args.kwargs)
+
+    def test_live_stage_repair_attempt_and_private_data_boundary(self):
+        folder=Path(self.temp.name)
+        (folder/'progress-edit.json').write_text(json.dumps({'phase':'waiting_validation','attempt':2}))
+        (folder/'progress-validation-2.json').write_text(json.dumps({'phase':'fixed','attempt':2,'private':'sample content'}))
+        job={'id':'123456789012345','status':'running','created':0}
+        with patch('fa_bot.progress.locate',return_value=(folder,{})):
+            text=progress_text(job,125)
+        self.assertIn('changed version against the same test',text)
+        self.assertIn('attempt 2/2',text)
+        self.assertNotIn('sample content',text)
+
+    def test_eta_queue_overrun_and_history(self):
+        from fa_bot.progress import remaining_text
+        job={'status':'queued','created':0}
+        self.assertIn('Queue wait is unknown',remaining_text(job,9999))
+        job['status']='running'
+        self.assertIn('5–15 min',remaining_text(job,300,(600,1200),0))
+        self.assertIn('recent successful runs',remaining_text(job,300,(600,1200),0))
+        self.assertIn('no reliable remaining time',remaining_text(job,1201,(600,1200),0))
+        job['status']='dispatch_uncertain'
+        self.assertIn('unavailable',remaining_text(job,300))
 
     async def test_ignored_channel_never_edited(self):
         self.channel.name = 'todo'

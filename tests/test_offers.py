@@ -1,7 +1,7 @@
 import asyncio
 import unittest
 from types import SimpleNamespace as NS
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from fa_bot.messages import DevelopmentOffer, qa_message
 from fa_bot.qa import QAReply
 
@@ -13,6 +13,19 @@ def interaction(user=1):
 
 
 class OfferTests(unittest.IsolatedAsyncioTestCase):
+    async def test_confirmation_binds_public_followup_and_preserves_qa_answer(self):
+        bot=NS(start_job=AsyncMock(return_value='Task accepted'))
+        view=DevelopmentOffer(bot,1,2,'Add a small requested feature.')
+        event=interaction()
+        sent=NS(id=456)
+        event.followup.send.return_value=sent
+        with patch('fa_bot.messages.bind_progress',new_callable=AsyncMock,return_value=True) as bind:
+            await view.confirm(event)
+        event.response.defer.assert_awaited_once_with(thinking=True)
+        event.followup.send.assert_awaited_once_with('Task accepted',wait=True)
+        bind.assert_awaited_once_with(bot,str(event.id),sent)
+        event.message.edit.assert_awaited_once_with(view=view)
+
     async def test_user_reply_and_technical_handoff_stay_separate(self):
         bot = NS(start_job=AsyncMock(return_value='Task accepted'), store=NS(job=lambda key: None))
         public = '可以添加 osu! 粉色主题，并在设置中选择。'
