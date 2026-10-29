@@ -85,8 +85,8 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
                     await bot.poll_jobs()
             github.run.assert_awaited_with(20, build=True)
             self.assertEqual(bot.store.job('123')['status'], 'success')
-            self.assertIn('public', channel.send.call_args.args[0])
-            self.assertNotIn('private', channel.send.call_args.args[0])
+            self.assertIn('public', channel.send.call_args.kwargs['content'])
+            self.assertNotIn('private', channel.send.call_args.kwargs['content'])
             bot.store.db.close()
 
     async def test_qa_two_rounds_evidence_and_usage(self):

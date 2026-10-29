@@ -12,6 +12,7 @@ from discord import app_commands
 from .config import GUILDS, OWNER, JOB_CAP, WORK_BRANCH, secret
 from .github import GitHub
 from .knowledge import Knowledge
+from .messages import linked_message
 from .qa import APIError, answer
 from .store import Store
 
@@ -97,7 +98,7 @@ class Bot(discord.Client):
         try:
             async with message.channel.typing():
                 text = await self.ask(message.author.id, message.id, question)
-            await message.reply(text, mention_author=False)
+            await message.reply(**linked_message(text), mention_author=False)
         except ValueError as error:
             await message.reply(str(error), mention_author=False)
         except Exception as error:
@@ -143,7 +144,7 @@ class Bot(discord.Client):
                             f'Branch: `{job["branch"]}`\n'
                             'Successful editor CI runs contain the tested package. '
                             'Use /revise with this task ID for another attempt.')
-                    await channel.send(text)
+                    await channel.send(**linked_message(text, label="Build"))
                     self.store.update(job['id'], status)
                 except Exception as error:
                     LOG.warning('Job polling failed for %s: %s', job['id'], type(error).__name__)
@@ -189,7 +190,7 @@ class Bot(discord.Client):
                 await interaction.response.send_message('This server is not enabled.', ephemeral=True)
                 return
             await interaction.response.defer(thinking=True)
-            await interaction.followup.send(await self.ask(interaction.user.id, interaction.id, question))
+            await interaction.followup.send(**linked_message(await self.ask(interaction.user.id, interaction.id, question)))
 
         @self.tree.command(name='develop', description='Try a small fix or feature on the shared repair branch')
         async def develop(interaction: discord.Interaction, request: str):
@@ -211,7 +212,7 @@ class Bot(discord.Client):
             if not job or job['owner'] != str(interaction.user.id) or job['channel'] != str(interaction.channel_id):
                 await interaction.response.send_message('Task not found in this channel.', ephemeral=True)
                 return
-            await interaction.response.send_message(f'{job["status"]}\n{job["url"] or "Awaiting GitHub run discovery"}', ephemeral=True)
+            await interaction.response.send_message(**linked_message(f'{job["status"]}\n{job["url"] or "Awaiting GitHub run discovery"}', label="Build"), ephemeral=True)
 
         @self.tree.error
         async def error(interaction, error):

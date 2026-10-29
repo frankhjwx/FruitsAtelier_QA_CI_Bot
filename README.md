@@ -14,7 +14,8 @@ editor's `dev` or `main` branches.
 
 - `@Papaya <question>` or `/ask`: answer from public documentation, source and
   recently updated issues. The bot translates search keywords when needed and
-  cites commit-pinned evidence. The 10–30 second target is a response target,
+  cites commit-pinned evidence through compact source buttons below the answer.
+  Message bodies omit URLs and disable link previews. The 10–30 second target is a response target,
   not a guarantee of bug reproduction. A lookup has a 26-second deadline.
 - `/template`: concise usage, bug and feature request templates.
 - `/develop`: attempt a small change on `codex-discord-bug-fix`. The branch
