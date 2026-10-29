@@ -232,6 +232,11 @@ class Bot(discord.Client):
             localization = reply.localization
         request = encode(request, localization)
         transfer_token = await asyncio.to_thread(create_transfer, interaction.user.id, interaction.channel_id, key, attachment_ids)
+        # QA and attachment transfer yield; another requester may have claimed the shared branch.
+        if self.store.repair_active():
+            raise ValueError('A repair or PR is already running; please wait for its package or maintainer review.')
+        if previous and self.store.latest_job()['id'] != previous:
+            raise ValueError('This is not the latest task. Use /revise to continue the latest task.')
         self.store.reserve(key, 'dev', JOB_CAP)
         self.store.add_job(key, interaction.user.id, interaction.channel_id, branch, request)
         self.store.save_attachments(key, attachment_ids)

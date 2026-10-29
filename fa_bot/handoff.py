@@ -7,7 +7,7 @@ from .config import SOURCE_REPO
 
 def locator(query, direction, sources, evidence, sha):
     selected = []
-    for item in evidence:
+    for item in reversed(evidence):
         url = urlsplit(item.get('url', ''))
         prefix = f'/{SOURCE_REPO}/blob/{sha}/'
         if url.hostname != 'github.com' or not url.path.startswith(prefix):

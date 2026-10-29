@@ -151,7 +151,7 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
                                'required':['path','start'],'additionalProperties':False},'strict':True}
     history = [{'role': item['role'], 'content': item['content'][:1000]}
                for item in list(context)[-6:] if item['role'] in ('user', 'assistant')]
-    history.append({'role': 'user', 'content': ([{'type': 'input_text', 'text': question[:4000]}] + list(attachments)) if attachments else question[:4000]})
+    history.append({'role': 'user', 'content': ([{'type': 'input_text', 'text': question[:6000]}] + list(attachments)) if attachments else question[:6000]})
     cost = 0.0
 
     async def call(**extra):
@@ -216,8 +216,9 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
             fresh = [dict(item) for item in found if (item.get('url'),item.get('text')) not in existing]
             for item in fresh:
                 body = item.get('text', '')
-                cap = 7000 if calls[0]['name'] == 'read_evidence' else max(400, 4500 // max(1,len(fresh)))
-                item['text'] = body[:cap] + ('\n[Partial excerpt; use read_evidence for more lines.]' if len(body)>cap else '')
+                cap = 6000 if calls[0]['name'] == 'read_evidence' else max(250, 3000 // max(1,len(fresh)))
+                raw = body.encode('utf-8')
+                item['text'] = raw[:cap].decode('utf-8',errors='ignore') + ('\n[Partial excerpt; use read_evidence for more lines.]' if len(raw)>cap else '')
             while True:
                 tool_result = {'type': 'function_call_output', 'call_id': calls[0]['call_id'],
                                'output': json.dumps({'dev_commit': knowledge.sha,
@@ -231,9 +232,14 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
                 read_count += 1
             evidence.extend(fresh)
             history.append(tool_result)
-            logging.getLogger('fa_bot.qa').info('QA search %s: query=%s prefix=%s sources=%s',
-                                               round_number+1, query, prefix, [e.get('source') for e in fresh])
-            result = await call(tool_choice='none' if round_number == 7 else 'auto')
+            logging.getLogger('fa_bot.qa').info('QA evidence %s: tool=%s query=%s path=%s start=%s found=%s retained=%s sources=%s',
+                round_number+1, calls[0]['name'], query, args.get('path',prefix), args.get('start'), len(found), len(fresh), [e.get('source') for e in fresh])
+            code_leads = [item['url'] for item in evidence if '/src/' in item.get('url','') and '.cs#L' in item['url']]
+            choice = 'none' if round_number == 7 else 'auto'
+            if read_count == 0 and code_leads and 2 <= round_number < 7:
+                history.append({'role':'user','content':'Read a SOURCE implementation now with read_evidence, using its exact repository-relative path and line from one of these observed links: '+json.dumps(code_leads[-5:])+' . A documentation read does not establish source localization.'})
+                choice = {'type':'function','name':'read_evidence'}
+            result = await call(tool_choice=choice)
         text = output_text(result)
         if not text:
             raise RuntimeError('No answer produced within token limit')

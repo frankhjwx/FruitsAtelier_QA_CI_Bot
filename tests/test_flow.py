@@ -197,6 +197,25 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
             finally:
                 bot.store.db.close()
 
+    async def test_another_repair_starting_during_qa_prevents_dispatch(self):
+        from types import SimpleNamespace as NS
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'STATE_FILE': str(Path(folder)/'state.sqlite3')}):
+            bot=Bot(); bot.github=NS(dispatch=AsyncMock())
+            async def locate(*args, **kwargs):
+                bot.store.add_job('other',4,2,'codex-discord-bug-fix','Other request')
+                return QAReply('Located','Display timestamps',localization={
+                    'query':'selection','direction':'Inspect selection','commit':'a'*40,
+                    'locations':[{'path':'src/Test.cs','line':1}]})
+            bot.ask=locate
+            try:
+                event=NS(id=1234567890123456,user=NS(id=3),channel_id=2,guild_id=1479878482438918297)
+                with self.assertRaisesRegex(ValueError,'already running'):
+                    await bot.start_job(event,'Display selected timestamps')
+                bot.github.dispatch.assert_not_awaited()
+                self.assertIsNone(bot.store.job(str(event.id)))
+            finally:
+                bot.store.db.close()
+
     async def test_uncertain_dispatch_is_not_retried(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'STATE_FILE': str(Path(folder)/'state.sqlite3')}):
             bot = Bot()
