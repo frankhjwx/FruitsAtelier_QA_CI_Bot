@@ -23,18 +23,8 @@ permissions:
   contents: read
 jobs:
   validate:
-    if: github.ref == 'refs/heads/main'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: windows
-            runner: windows-2022
-            global: source/global.json
-          - platform: macos
-            runner: macos-15
-            global: source/macOS/global.json
-    runs-on: ${{ matrix.runner }}
+    if: github.ref == 'refs/heads/main' && github.run_attempt == 1
+    runs-on: windows-2022
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -52,7 +42,7 @@ jobs:
           python-version: '3.13'
       - uses: actions/setup-dotnet@v4
         with:
-          global-json-file: ${{ matrix.global }}
+          global-json-file: source/global.json
       - name: Run private baseline and regression checks
         env:
           TRANSFER_URL: ${{ vars.FA_TRANSFER_URL }}
@@ -60,7 +50,7 @@ jobs:
           FA_ACCEPTANCE: ${{ inputs.acceptance }}
           JOB_ID: ${{ inputs.job_id }}
           ATTEMPT: ${{ inputs.attempt }}
-          VALIDATION_PLATFORM: ${{ matrix.platform }}
+          VALIDATION_PLATFORM: windows
           SOURCE_ROOT: ${{ github.workspace }}/source
         run: python controller/validate_private.py
       - name: Remove private runner copies

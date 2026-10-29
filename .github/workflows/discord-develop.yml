@@ -46,7 +46,7 @@ jobs:
     permissions:
       contents: read
       actions: write
-    runs-on: ubuntu-latest
+    runs-on: windows-2022
     timeout-minutes: 75
     outputs:
       commit: ${{ steps.edit.outputs.commit }}

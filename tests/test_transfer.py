@@ -99,28 +99,27 @@ class TransferTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await self.client.get(endpoint+'diagnostic-1',headers=headers)).status,410)
 
 class VerificationTests(unittest.TestCase):
-    def test_failed_infrastructure_retries_only_failed_jobs_once(self):
+    def test_infrastructure_failure_does_not_rerun(self):
         from repair_ci import wait_validation
         run={'id':10,'status':'completed','conclusion':'failure','run_attempt':1,'display_title':f'FA validation {KEY}.1'}
-        completed={**run,'conclusion':'success','run_attempt':2}
-        with patch('repair_ci.gh',side_effect=[{'workflow_runs':[run]},run,None,run,completed]) as api, patch('repair_ci.time.sleep'):
-            wait_validation(KEY,1,'a'*40,'fake','test')
-        writes=[c for c in api.call_args_list if len(c.args)>2]
-        self.assertEqual(len(writes),1)
-        self.assertEqual(writes[0].args[0],'/actions/runs/10/rerun-failed-jobs')
+        with patch('repair_ci.gh',side_effect=[{'workflow_runs':[run]},run]) as api:
+            with self.assertRaisesRegex(RuntimeError,'automatic reruns are disabled'):
+                wait_validation(KEY,1,'a'*40,'fake','test')
+        self.assertFalse(any(len(c.args)>2 for c in api.call_args_list))
 
-    def test_repeated_infrastructure_failure_stops_without_new_model_or_dispatch(self):
+    def test_third_candidate_rejected_before_dispatch(self):
         from repair_ci import wait_validation
-        run={'id':10,'status':'completed','conclusion':'failure','run_attempt':1,'display_title':f'FA validation {KEY}.1'}
-        with patch('repair_ci.gh',side_effect=[{'workflow_runs':[run]},run,None,{**run,'run_attempt':2}]) as api, patch('repair_ci.time.sleep'):
-            with self.assertRaisesRegex(RuntimeError,'infrastructure'):wait_validation(KEY,1,'a'*40,'fake','test')
-        self.assertEqual(len([c for c in api.call_args_list if len(c.args)>2]),1)
+        with patch('repair_ci.gh') as api:
+            with self.assertRaisesRegex(ValueError,'two candidate'):
+                wait_validation(KEY,3,'a'*40,'fake','test')
+        api.assert_not_called()
 
     def test_success_needs_exact_samples_same_test_and_baseline_failure(self):
-        results=[{'platform':p,'passed':True,'test_sha256':'abc','sample_hashes':['sample']} for p in ('windows','macos')]
+        results=[{'platform':p,'passed':True,'test_sha256':'abc','sample_hashes':['sample']} for p in ('windows',)]
         self.assertFalse(verified(results,'abc',['sample']))
         results[0].update(baseline={'build':{'exit':0},'run':{'exit':42}},fixed={'build':{'exit':0},'run':{'exit':0}})
         self.assertTrue(verified(results,'abc',['sample']))
+        self.assertFalse(verified([{**results[0], 'platform':'macos'}],'abc',['sample']))
         self.assertFalse(verified(results,'other',['sample']))
         results[0]['baseline']['run']['exit']=0
         self.assertFalse(verified(results,'abc',['sample']))

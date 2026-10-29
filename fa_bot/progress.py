@@ -28,7 +28,7 @@ def progress_text(job, now):
             if candidates:
                 attempt = candidates[-1].stem.split('-')[-1]
                 stage = f'Running regression checks (attempt {attempt})'
-                for platform in ('windows', 'macos'):
+                for platform in ('windows',):
                     path = folder / f'result-{attempt}-{platform}.json'
                     if not path.exists():
                         checks.append(f'{platform}: pending')

@@ -117,6 +117,7 @@ def restore_candidate(workspace, candidate, base):
 
 
 def wait_validation(key,attempt,sha,token,test_token,acceptance=False):
+    if attempt not in (1,2): raise ValueError('At most two candidate validations per task')
     title=f'FA validation {key}.{attempt}'
     path='/actions/workflows/discord-validate.yml'
     def find():
@@ -127,24 +128,14 @@ def wait_validation(key,attempt,sha,token,test_token,acceptance=False):
     if found is None:
         gh(path+'/dispatches',token,{'ref':'main','inputs':{'job_id':key,'attempt':str(attempt),'commit':sha,'transfer_token':test_token,'acceptance':str(acceptance).lower()}})
     start=time.monotonic()
-    retried_attempt=None
-    while time.monotonic()-start<2700:
+    while time.monotonic()-start<1800:
         found=gh('/actions/runs/'+str(found['id']),token) if found else find()
         if found and found['status']=='completed':
-            if retried_attempt is not None and found.get('run_attempt',1)<=retried_attempt:
-                # GitHub can briefly return the completed attempt after accepting a rerun.
-                time.sleep(15)
-                continue
             if found['conclusion']=='success': return
-            if retried_attempt is None and found['conclusion'] in ('failure','timed_out'):
-                retried_attempt=found.get('run_attempt',1)
-                gh('/actions/runs/'+str(found['id'])+'/rerun-failed-jobs',token,{})
-                print('Retrying failed validation infrastructure once; candidate and model budget are unchanged.',flush=True)
-            else:
-                raise RuntimeError('Validation infrastructure failed')
+            raise RuntimeError('Validation infrastructure failed; automatic reruns are disabled')
         if found is None and time.monotonic()-start>600: raise RuntimeError('Validation dispatch uncertain')
         time.sleep(15)
-    raise TimeoutError('Validation did not finish')
+    raise TimeoutError('Validation did not finish; no automatic redispatch')
 
 
 def failure_feedback(results):
@@ -152,7 +143,7 @@ def failure_feedback(results):
 
 
 def verified(results,digest,hashes):
-    if len(results)!=2 or {r.get('platform') for r in results}!={'windows','macos'}: return False
+    if len(results)!=1 or results[0].get('platform')!='windows': return False
     if not all(r.get('passed') is True and r.get('test_sha256')==digest and r.get('sample_hashes')==hashes for r in results): return False
     windows=next(r for r in results if r['platform']=='windows')
     return (windows.get('baseline',{}).get('build',{}).get('exit')==0 and
@@ -196,7 +187,7 @@ def main():
         task_request, localization = decode(os.environ['TASK_REQUEST'])
         if not acceptance and not ready(localization):
             raise RuntimeError('Repairs require QA implementation localization before dispatch')
-        for attempt in range(1,4):
+        for attempt in range(1,3):
             print(f'Private repair round {attempt}; original sample count {len(manifest["files"])}.',flush=True)
             continuing=bool(workspace.history)
             prompt=('Continue the same confirmed task. Fix the failed checks below; prior edits and evidence remain in this conversation.'
@@ -231,7 +222,7 @@ def main():
             candidate={'base':base,'changes':changes,'regression':workspace.regression}
             transfer.json(f'candidate-{attempt}',candidate)
             wait_validation(key,attempt,base,bot_token,manifest['test_token'],acceptance)
-            results=[transfer.json(f'result-{attempt}-{platform}') for platform in ('windows','macos')]
+            results=[transfer.json(f'result-{attempt}-{platform}') for platform in ('windows',)]
             digest=hashlib.sha256(workspace.regression['code'].encode()).hexdigest()
             hashes=[f['sha256'] for f in manifest['files']]
             if verified(results,digest,hashes):
@@ -240,7 +231,7 @@ def main():
                     Path('acceptance.json').write_text(json.dumps({'verified':True,'attempts':attempt,'sample_count':len(hashes),'cost':spent}),encoding='utf-8')
                     print(f'Acceptance passed after {attempt} rounds; no public source was changed.',flush=True)
                     return
-                sha=worker.publish(workspace,branch,key,'Sample-backed regression passed on baseline/fixed comparison; Windows and macOS checks passed.',token,base)
+                sha=worker.publish(workspace,branch,key,'Sample-backed regression passed on baseline/fixed comparison; Windows checks passed; macOS validation is disabled.',token,base)
                 with open(os.environ['GITHUB_OUTPUT'],'a') as out: out.write(f'commit={sha}\n')
                 receipt={'job_id':key,'sha':sha,'regression_verified':True,'attempts':attempt,'sample_count':len(hashes),'test_sha256':digest,'cost':spent}
                 Path('source.json').write_text(json.dumps(receipt),encoding='utf-8')

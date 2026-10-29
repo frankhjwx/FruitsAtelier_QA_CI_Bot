@@ -94,6 +94,6 @@ class ProgressTests(unittest.IsolatedAsyncioTestCase):
             text = progress_text(job, 125)
         self.assertIn('attempt 2', text)
         self.assertIn('windows: not passed', text)
-        self.assertIn('macos: pending', text)
+        self.assertNotIn('macos:', text)
         self.assertNotIn('private material', text)
         self.assertIn('2m 05s', text)

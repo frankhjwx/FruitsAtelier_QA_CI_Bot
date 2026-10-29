@@ -53,7 +53,7 @@ remain explicit command shortcuts.
 
 Accepted development tasks reuse the QA confirmation message (or the command's
 acceptance reply) for progress. Papaya edits that message about every two minutes
-with the current phase, elapsed time and available Windows/macOS validation results.
+with the current phase, elapsed time and available Windows validation results.
 The final package or failure result replaces the same message. Message IDs persist
 across restarts; deleted or inaccessible messages do not cause replacement posts.
 Progress uses controller state and private validation results, without model calls.
@@ -139,8 +139,8 @@ identical bytes succeeds, while different content at the same resource is reject
 TLS certificate pinning, role restrictions, size limits and expiry still apply.
 File responses use buffered TLS writes. Workflow capabilities are read from the
 task-scoped event file rather than exposed in step environment logs.
-Failed validation infrastructure can rerun failed GitHub jobs once against the same
-candidate without another model call; logical test failures return to the repair loop.
+Infrastructure failures stop without automatic job reruns. Logical failures may
+return to the repair loop, with at most two candidate validations per task.
 UI regression setup must follow the repository's input conventions and wait for
 asynchronous readiness before asserting the requested behavior.
 Maintainer reruns can seed a new private transfer from the latest candidate of an
@@ -186,8 +186,9 @@ private regression and deduplicated failing diagnostics rather than the earlier 
 history. Code search returns signatures and locations; source bodies are read on demand.
 Model instructions remain stable; changing budget and workspace state are appended to the
 request. Cache reuse is measured from API usage and is not assumed in budget accounting.
-The Windows validation gate runs first; macOS waits for it and skips full regression if
-Windows rejects the candidate. All successful candidates still require both platforms.
+Private validation runs on Windows only. Publication requires the same-test
+baseline failure, fixed-source success, original sample hashes and full Windows
+regression suites. macOS validation is disabled and is not reported as passed.
 Private CI logs record tool names, argument hashes, result sizes and error types,
 without tool bodies or original attachment contents.
 The editing AI submits a candidate by calling `set_regression` after its source edits.
@@ -405,7 +406,7 @@ Unsupported or unreproduced cases are reported as unverified, never repaired.
 
 Each editing round permits up to 50 model turns, with remaining turns and task budget
 included in the controller instructions. The shared $0.50 task cap still applies.
-Failed validation returns private diagnostics to the AI for up to three rounds
+Failed validation returns private diagnostics to the AI for up to two rounds
 within the same $0.50 task budget and workflow timeout. No raw sample, private test
 or test output is uploaded as a GitHub artifact. They remain in expiring VPS transfer
 storage and disposable runner directories, which are removed in finally/always
@@ -417,3 +418,7 @@ Maintainers can dispatch `discord-develop.yml` with `acceptance: true` using a
 synthetic sample transfer. This validates the complete private flow, deliberately
 injects a failed first validation round, and never publishes a source commit or
 public package. The second round must pass the actual unchanged-test comparison.
+
+All Bot Actions jobs use standard Windows runners. Temporary Actions artifacts
+are retained for seven days. Account-wide billing remains controlled by GitHub
+budgets; model token costs do not include Actions compute or storage.
