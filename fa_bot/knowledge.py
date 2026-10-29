@@ -5,10 +5,14 @@ import datetime as dt
 import io
 import math
 import re
+import os
+from pathlib import Path
+import sqlite3
 import tarfile
 import aiohttp
 
 from .config import SOURCE_REPO
+from .code_index import CodeIndex
 
 
 def terms(text):
@@ -21,9 +25,19 @@ class Knowledge:
     def __init__(self):
         self.chunks, self.df = [], collections.Counter()
         self.sha = self.updated = ''
+        self.code_index = None
 
     def load(self, archive, sha, issues):
         chunks = []
+        cache = Path(os.environ['STATE_FILE']).parent/'code-index.sqlite3' if os.getenv('STATE_FILE') else None
+        index = self.code_index if self.code_index and self.code_index.sha == sha else None
+        if index is None and cache and cache.is_file():
+            try:
+                index = CodeIndex.restore(cache, sha)
+            except (ValueError, sqlite3.Error):
+                pass
+        restored = index is not None
+        index = index or CodeIndex(sha)
         with tarfile.open(fileobj=io.BytesIO(archive), mode='r:gz') as tar:
             for member in tar:
                 if not member.isfile() or member.size > 600_000:
@@ -33,6 +47,10 @@ class Knowledge:
                         (path.startswith(('docs/', 'src/', 'macOS/src/')) or path.startswith('README'))):
                     continue
                 body = tar.extractfile(member).read().decode('utf-8', 'replace')
+                if path.endswith('.cs'):
+                    if not restored:
+                        index.add(path, body)
+                    continue
                 lines = body.splitlines()
                 for start in range(0, len(lines), 60):
                     content = '\n'.join(lines[start:start+80])[:6500]
@@ -43,6 +61,9 @@ class Knowledge:
         indexed = [(path, url, body, collections.Counter(terms(path + '\n' + body)))
                    for path, url, body in chunks]
         df = collections.Counter(t for *_, counts in indexed for t in counts)
+        if cache and not restored:
+            index.save(cache)
+        self.code_index = index
         self.chunks, self.df, self.sha = indexed, df, sha
         self.updated = dt.datetime.now(dt.timezone.utc).isoformat()
 
@@ -70,4 +91,9 @@ class Knowledge:
                 score *= 1.3
             if score:
                 scores.append((score, path, url, body))
-        return [{'source': p, 'url': u, 'text': b} for _, p, u, b in sorted(scores, reverse=True)[:limit]]
+        code = self.code_index.search(query, limit=min(3,limit), budget=9000) if self.code_index else []
+        results = [{'source':f'{r["path"]} ({r["symbol"]})',
+                    'url':f'https://github.com/{SOURCE_REPO}/blob/{r["sha"]}/{r["path"]}#L{r["start"]}',
+                    'text':r['text']} for r in code]
+        docs = [{'source': p, 'url': u, 'text': b} for _, p, u, b in sorted(scores, reverse=True)]
+        return (docs[:max(0,limit-len(results))] + results)[:limit]

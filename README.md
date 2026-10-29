@@ -114,6 +114,28 @@ read-only repository permissions. No changes are merged automatically.
 
 ## Deployment
 
+### Static code retrieval
+
+QA uses a local C# syntax index built with Tree-sitter and queried through SQLite
+FTS5. Methods, constructors, properties and type headers retain their source paths
+and line ranges. Identifier splitting supports both exact symbols and component
+words. This is structural and lexical retrieval, not vector embeddings or a
+compiler-resolved call graph; it makes no additional model calls.
+
+The server saves `code-index.sqlite3` beside the state database. Its commit SHA
+and index format must match before reuse; a different revision triggers rebuilding
+and atomic cache replacement during knowledge refresh. Only public repository
+source is indexed. User attachments and credentials are never added to this cache.
+
+CI exposes `code_search` using the same indexer against its own checked-out commit.
+It includes relevant documentation and tests, and updates changed files after
+each edit. Results identify the baseline SHA and working edits. The index remains
+in runner memory and is not published. Server indexing never executes editor code.
+
+Parser dependencies are pinned to [tree-sitter 0.25.2](https://github.com/tree-sitter/py-tree-sitter)
+and [tree-sitter-c-sharp 0.23.1](https://github.com/tree-sitter/tree-sitter-c-sharp),
+both MIT licensed; installed distributions retain their license notices.
+
 On the maintainer's Windows computer, run `python deploy/setup_wizard.py` for
 one-session configuration. The local window accepts the QA and CI OpenAI keys
 and the two scoped GitHub tokens described below. It provides prefilled GitHub

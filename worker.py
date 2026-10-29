@@ -35,7 +35,9 @@ Read AGENTS.md and relevant documentation before editing. Read docs/EDITING_PERF
 interactive editing changes. Preserve Windows/macOS compatibility and bilingual localization.
 Use search/read/replace tools. Search matches an exact literal phrase, with optional file/directory
 scope and result pagination. Locate symbols before reading their surrounding code. Batch independent
-queries in one response. Use remember to retain concise findings, relevant paths/line ranges and
+queries in one response. Prefer code_search first: it returns ranked methods, types and documentation
+with source locations from the current checkout, including edits. Use exact search for callers.
+Use remember to retain concise findings, relevant paths/line ranges and
 remaining work before older query results are compacted. No shell or execution tools exist.
 CI tests after you finish. Do not end with a completion summary until edits and the required private
 regression have been recorded, unless declining or explicitly explaining why completion is impossible.
@@ -63,6 +65,26 @@ class Workspace:
         self.root = Path(root).resolve()
         self.changed = set()
         self.notes = ''
+        self.code_index = None
+
+    def code_search(self, query):
+        if self.code_index is None:
+            from fa_bot.code_index import CodeIndex
+            sha = subprocess.check_output(['git','-C',str(self.root),'rev-parse','HEAD'],text=True).strip()
+            index = CodeIndex(sha)
+            paths = subprocess.check_output(['git','-C',str(self.root),'ls-files'],text=True).splitlines()
+            for name in sorted(set(paths) | self.changed):
+                if not name.endswith(('.cs','.md')):
+                    continue
+                try:
+                    target = self.path(name)
+                    if target.stat().st_size <= 2_000_000:
+                        index.add(name,target.read_text(encoding='utf-8-sig'))
+                except (ValueError,OSError):
+                    continue
+            self.code_index = index
+        return json.dumps({'base_sha':self.code_index.sha,'working_edits':sorted(self.changed),
+                           'matches':self.code_index.search(query)},ensure_ascii=False)
 
     def path(self, name, write=False):
         rel = PurePosixPath(name)
@@ -158,6 +180,8 @@ class Workspace:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(result, encoding='utf-8', newline='')
         self.changed.add(path)
+        if self.code_index is not None:
+            self.code_index.add(path,result)
         return 'Updated ' + path
 
 
@@ -173,7 +197,7 @@ def compact_evidence(history):
         return False
     queries = {item.get('call_id') for item in history
                if item.get('type') == 'function_call' and
-               item.get('name') in {'read', 'search', 'sample_read'}}
+               item.get('name') in {'read', 'search', 'sample_read', 'code_search'}}
     changed = False
     for item in history:
         if (item.get('type') == 'function_call_output' and item.get('call_id') in queries
@@ -188,6 +212,7 @@ def compact_evidence(history):
 def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instructions="", image_inputs=()):
     tools = [tool('read', {'path': {'type': 'string'}, 'start': {'type': 'integer'}, 'count': {'type': 'integer'}}),
              tool('search', {'query': {'type': 'string'}, 'path': {'type': 'string'}, 'start': {'type': 'integer'}}),
+             tool('code_search', {'query': {'type': 'string'}}),
              tool('remember', {'notes': {'type': 'string'}}),
              tool('replace', {k: {'type': 'string'} for k in ('path', 'old', 'new')})]
     tools.extend(extra_tools)
@@ -249,7 +274,7 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
                 if index >= 12:
                     raise ValueError('Tool batch capacity reached; retry this operation in the next turn')
                 args = json.loads(call['arguments'])
-                if call['name'] not in ('read', 'search', 'replace', 'remember') + tuple(t['name'] for t in extra_tools):
+                if call['name'] not in ('read', 'search', 'code_search', 'replace', 'remember') + tuple(t['name'] for t in extra_tools):
                     raise ValueError('Unknown tool')
                 result = getattr(workspace, call['name'])(**args)
             except (ValueError, OSError, TypeError, KeyError) as error:

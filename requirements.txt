@@ -11,3 +11,5 @@ propcache==0.5.4
 yarl==1.25.1
 Pillow==13.0.0
 mutagen==1.48.1
+tree-sitter==0.25.2
+tree-sitter-c-sharp==0.23.1
