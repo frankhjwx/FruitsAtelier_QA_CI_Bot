@@ -66,7 +66,8 @@ class Bot(discord.Client):
     def eligible(self, user, guild):
         return (guild is None and user == OWNER) or (guild is not None and guild in GUILDS)
 
-    def admit(self, user):
+    def admit(self, user, kind="qa"):
+        user = (user, kind)
         now = time.monotonic()
         if now - self.cooldowns.get(user, -100) < 10:
             raise ValueError('Please wait 10 seconds before another request.')
@@ -172,7 +173,7 @@ class Bot(discord.Client):
     async def start_job(self, interaction, request, previous=None):
         if not self.eligible(interaction.user.id, interaction.guild_id):
             raise ValueError('This server is not enabled.')
-        self.admit(interaction.user.id)
+        self.admit(interaction.user.id, "dev")
         if not 10 <= len(request) <= 3500:
             raise ValueError('Please describe the request in 10–3500 characters.')
         if self.store.repair_active():

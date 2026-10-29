@@ -58,3 +58,21 @@ class OfferTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(data['view'].children),1)
         self.assertIsNotNone(data['view'].children[0].url)
         self.assertNotIn('https://',data['content'])
+
+
+    async def test_qa_cooldown_does_not_block_immediate_confirmation(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from fa_bot.bot import Bot
+        with tempfile.TemporaryDirectory() as folder, patch.dict('os.environ', {'STATE_FILE':str(Path(folder)/'state.sqlite3')}):
+            bot=Bot()
+            bot.github=NS(dispatch=AsyncMock())
+            try:
+                bot.admit(1)
+                event=NS(id=123456789012345,user=NS(id=1),channel_id=2,guild_id=1554882915945414726)
+                result=await bot.start_job(event,'Add the requested feature.')
+                self.assertIn('accepted',result)
+                bot.github.dispatch.assert_awaited_once()
+            finally:
+                bot.store.db.close()
