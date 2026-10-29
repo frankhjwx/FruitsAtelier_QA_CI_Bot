@@ -2,6 +2,7 @@
 import re
 import discord
 from .channel_policy import ignore_interaction
+from .progress import bind_progress
 
 
 def linked_message(text, label='Source'):
@@ -79,7 +80,8 @@ class DevelopmentOffer(discord.ui.View):
             self.stop()
             await interaction.followup.send(status, ephemeral=True)
             if interaction.message:
-                await interaction.message.edit(view=self)
+                if not await bind_progress(self.bot, str(interaction.id), interaction.message):
+                    await interaction.message.edit(view=self)
         finally:
             self.pending = False
 

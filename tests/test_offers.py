@@ -7,14 +7,14 @@ from fa_bot.qa import QAReply
 
 
 def interaction(user=1):
-    return NS(user=NS(id=user), channel_id=2,
+    return NS(id=123, user=NS(id=user), channel_id=2,
               response=NS(send_message=AsyncMock(), defer=AsyncMock()),
               followup=NS(send=AsyncMock()), message=NS(edit=AsyncMock()))
 
 
 class OfferTests(unittest.IsolatedAsyncioTestCase):
     async def test_qa_does_not_dispatch_until_owner_confirms(self):
-        bot=NS(start_job=AsyncMock(return_value='Task accepted'))
+        bot=NS(start_job=AsyncMock(return_value='Task accepted'), store=NS(job=lambda key: None))
         data=qa_message(QAReply('Proposed feature.', 'Add a small feature requested by the user.'),bot,1,2)
         view=data['view']
         bot.start_job.assert_not_called()
@@ -34,7 +34,7 @@ class OfferTests(unittest.IsolatedAsyncioTestCase):
             entered.set()
             await release.wait()
             return 'Task accepted'
-        bot=NS(start_job=AsyncMock(side_effect=start))
+        bot=NS(start_job=AsyncMock(side_effect=start), store=NS(job=lambda key: None))
         view=DevelopmentOffer(bot,1,2,'Add a small requested feature.')
         first=asyncio.create_task(view.confirm(interaction()))
         await entered.wait()

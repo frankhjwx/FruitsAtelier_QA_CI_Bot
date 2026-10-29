@@ -175,7 +175,7 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
             try:
                 bot.store.add_job('latest',3,2,'codex-discord-bug-fix','Original request')
                 bot.start_job=AsyncMock(return_value='Accepted')
-                interaction=NS(response=NS(defer=AsyncMock()),followup=NS(send=AsyncMock()))
+                interaction=NS(id=123, response=NS(defer=AsyncMock()),followup=NS(send=AsyncMock()))
                 command=bot.tree.get_command('revise')
                 await command.callback(interaction,feedback='Retry')
                 bot.start_job.assert_awaited_once_with(interaction,'Retry','latest')

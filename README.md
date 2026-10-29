@@ -51,6 +51,13 @@ or repeated clicks cannot dispatch the same offer twice. A busy repair slot
 leaves the offer available to retry until it expires. `/develop` and `/revise`
 remain explicit command shortcuts.
 
+Accepted development tasks reuse the QA confirmation message (or the command's
+acceptance reply) for progress. Papaya edits that message about every two minutes
+with the current phase, elapsed time and available Windows/macOS validation results.
+The final package or failure result replaces the same message. Message IDs persist
+across restarts; deleted or inaccessible messages do not cause replacement posts.
+Progress uses controller state and private validation results, without model calls.
+
 ## Evidence and test packages
 
 The in-memory index refreshes every 15 minutes from `dev` and the 100 most

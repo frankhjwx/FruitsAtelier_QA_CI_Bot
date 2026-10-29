@@ -16,6 +16,8 @@ class Store:
           PRAGMA journal_mode=WAL;
           CREATE TABLE IF NOT EXISTS qa_requests (id TEXT PRIMARY KEY, owner TEXT, created REAL);
           CREATE TABLE IF NOT EXISTS job_attachments (job_id TEXT PRIMARY KEY, ids TEXT NOT NULL);
+          CREATE TABLE IF NOT EXISTS job_progress (
+            job_id TEXT PRIMARY KEY, message_id TEXT NOT NULL, updated REAL NOT NULL);
           CREATE TABLE IF NOT EXISTS reviews (
             job_id TEXT PRIMARY KEY, sha TEXT, state TEXT, url TEXT,
             number INTEGER, created REAL);
@@ -73,6 +75,17 @@ class Store:
 
     def job(self, key):
         return self.db.execute('SELECT * FROM jobs WHERE id=?', (key,)).fetchone()
+
+    def bind_progress(self, key, message_id):
+        with self.db:
+            self.db.execute('INSERT OR REPLACE INTO job_progress VALUES (?,?,0)', (key, str(message_id)))
+
+    def progress(self, key):
+        return self.db.execute('SELECT * FROM job_progress WHERE job_id=?', (key,)).fetchone()
+
+    def progress_attempt(self, key, now):
+        with self.db:
+            self.db.execute('UPDATE job_progress SET updated=? WHERE job_id=?', (now, key))
 
     def pending(self):
         return self.db.execute("SELECT * FROM jobs WHERE status IN ('dispatching','queued','running','building')").fetchall()

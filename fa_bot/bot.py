@@ -21,6 +21,7 @@ from .qa import APIError, QAReply, answer
 from .handoff import encode, decode, ready
 from .store import Store
 from .reviews import PackageReview, poll_reviews
+from .progress import bind_progress, update_progress, edit_progress
 
 LOG = logging.getLogger('fa_bot')
 TEMPLATE = ('Usage: version, OS, goal, what you tried.\n'
@@ -164,9 +165,12 @@ class Bot(discord.Client):
                     if not run:
                         if time.time() - job['created'] > 600:
                             self.store.update(job['id'], 'dispatch_uncertain')
+                        await update_progress(self, self.store.job(job['id']))
                         continue
                     if run['status'] != 'completed':
-                        self.store.update(job['id'], 'building' if building else 'running', run['id'], run['html_url'])
+                        phase = 'building' if building else ('running' if run['status'] == 'in_progress' else 'queued')
+                        self.store.update(job['id'], phase, run['id'], run['html_url'])
+                        await update_progress(self, self.store.job(job['id']))
                         continue
                     if not building and run['conclusion'] == 'success':
                         if not self.store.review(job['id']):
@@ -177,6 +181,7 @@ class Bot(discord.Client):
                             self.store.update(job['id'], 'building', preview['id'], preview['html_url'])
                         elif time.time() - job['created'] > 1800:
                             self.store.update(job['id'], 'build_dispatch_uncertain')
+                        await update_progress(self, self.store.job(job['id']))
                         continue
                     status = run['conclusion']
                     package = await self.github.package_url(run['id'], job['id']) if building and status == 'success' else None
@@ -195,7 +200,9 @@ class Bot(discord.Client):
                     else:
                         text = ("I couldn't finish preparing your test build. " if building else "I couldn't complete the requested changes. ")
                         payload = action_message(text + 'The repair has not been verified. The maintainer can check the failure or budget limit. Use /revise with more details to try again.')
-                    await channel.send(**notify_owner(payload, job['owner']))
+                    if not await edit_progress(self, job, payload):
+                        if not ignored_channel(channel):
+                            await channel.send(**notify_owner(payload, job['owner']))
                     self.store.update(job['id'], status)
                 except Exception as error:
                     LOG.warning('Job polling failed for %s: %s', job['id'], type(error).__name__)
@@ -274,7 +281,8 @@ class Bot(discord.Client):
         @self.tree.command(name='develop', description='Try a small fix or feature on the shared repair branch')
         async def develop(interaction: discord.Interaction, request: str):
             await interaction.response.defer(thinking=True)
-            await interaction.followup.send(await self.start_job(interaction, request))
+            sent = await interaction.followup.send(await self.start_job(interaction, request), wait=True)
+            await bind_progress(self, str(interaction.id), sent)
 
         @self.tree.command(name='revise', description='Continue your previous development task')
         async def revise(interaction: discord.Interaction, feedback: str, task_id: str | None = None, attachment: discord.Attachment | None = None):
@@ -291,7 +299,8 @@ class Bot(discord.Client):
                 status = await self.start_job(interaction, feedback, task_id.strip(), attachment_ids=(interaction.id,))
             else:
                 status = await self.start_job(interaction, feedback, task_id.strip())
-            await interaction.followup.send(status)
+            sent = await interaction.followup.send(status, wait=True)
+            await bind_progress(self, str(interaction.id), sent)
 
         @self.tree.command(name='template', description='Question and feature request templates')
         async def template(interaction: discord.Interaction):
