@@ -64,6 +64,10 @@ class Store:
     def pending(self):
         return self.db.execute("SELECT * FROM jobs WHERE status IN ('dispatching','queued','running','building')").fetchall()
 
+    def repair_active(self):
+        # An uncertain dispatch may still be executing and must retain the slot.
+        return self.db.execute("SELECT 1 FROM jobs WHERE status IN ('dispatching','queued','running','building','dispatch_uncertain','build_dispatch_uncertain') LIMIT 1").fetchone() is not None
+
     def latest_job(self):
         return self.db.execute('SELECT * FROM jobs ORDER BY created DESC, rowid DESC LIMIT 1').fetchone()
 

@@ -157,7 +157,7 @@ class Bot(discord.Client):
         self.admit(interaction.user.id)
         if not 10 <= len(request) <= 3500:
             raise ValueError('Please describe the request in 10–3500 characters.')
-        if self.store.pending():
+        if self.store.repair_active():
             raise ValueError('A repair is already running; please wait for its package result.')
         if self.store.recent_jobs(interaction.user.id) >= 5:
             raise ValueError('Daily development limit reached. Please try later.')

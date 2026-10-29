@@ -67,7 +67,8 @@ model call against the same per-attempt ceiling using a conservative UTF-8 byte
 bound. Some requests will exceed this small-change budget and stop without a
 package. Five daily development attempts per user and one active repair globally
 bound the queue. The private worker holds its concurrency slot through public
-testing and packaging. These application limits are not a replacement for account
+testing and packaging. An uncertain dispatch retains the repair slot until a
+maintainer reconciles the GitHub run. These application limits are not a replacement for account
 billing controls and do not include manually dispatched workflows or other apps.
 
 The development worker can search/read repository text and replace exact text

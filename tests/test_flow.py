@@ -118,7 +118,7 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
             bot = Bot()
             try:
                 bot.store.add_job('active', 1, 2, 'codex-discord-bug-fix', 'Original')
-                bot.store.update('active', 'building')
+                bot.store.update('active', 'build_dispatch_uncertain')
                 interaction = type('Interaction', (), {'id': 123456789012345678,
                     'guild_id': 1479878482438918297, 'channel_id': 2,
                     'user': type('User', (), {'id': 3})()})()
