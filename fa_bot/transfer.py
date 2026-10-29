@@ -87,8 +87,10 @@ async def transfer(request):
         return web.json_response(result,headers={'Cache-Control':'no-store'})
     if request.method=='GET' and item in {f['file'] for f in data['files']}:
         return web.FileResponse(folder/item,headers={'Cache-Control':'no-store'})
-    if not re.fullmatch(r'(candidate-[1-3]|result-[1-3]-(windows|macos))',item):
+    if not re.fullmatch(r'(candidate-[1-3]|diagnostic-[1-3]|result-[1-3]-(windows|macos))',item):
         raise web.HTTPNotFound()
+    if item.startswith('diagnostic') and role!='edit':
+        raise web.HTTPForbidden()
     if request.method=='PUT':
         if (item.startswith('candidate') and role!='edit') or (item.startswith('result') and role!='test'):
             raise web.HTTPForbidden()

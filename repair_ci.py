@@ -30,11 +30,24 @@ reproduction. New API tests should use existing behavior or reflection to compil
 Subsequent rounds receive private actual runner results. Fix the cause and preserve the test's
 intent. If this cannot be automatically reproduced in the supported runner, stop honestly without
 claiming it fixed. Do not publish or package; the controller does that only after validation passes.
+Use finish(status, summary) to end: ready only after source edits and set_regression are recorded;
+declined for out-of-scope work; blocked for a specific missing capability or impossible reproduction.
+The summary must state what changed or the concrete reason for stopping. Do not end with a plan,
+permission request, or a promise to work later. CI executes tests after ready; you must not claim a pass.
 '''
 
 class RepairWorkspace(worker.Workspace):
     def __init__(self,root,samples,manifest):
         super().__init__(root); self.samples=Path(samples); self.manifest=manifest; self.regression=None
+        self.requires_finish=True; self.finish_result=None; self.diagnostics=[]; self.last_cost=0
+    def finish(self,status,summary):
+        if status not in {'ready','declined','blocked'} or not summary.strip() or len(summary)>6000:
+            raise ValueError('Use ready, declined or blocked with a concrete summary under 6000 characters')
+        if status=='ready' and (not self.changed or not self.regression):
+            raise ValueError('Ready requires source edits and a private regression test; continue implementing')
+        self.finish_result={'status':status,'summary':summary}
+        self.diagnostics.append({'finish_status':status,'final_text':summary})
+        return 'Completion status recorded.'
     def sample_list(self):
         return json.dumps(self.manifest['files'])
     def sample_read(self,file,entry,start):
@@ -119,7 +132,7 @@ def main():
         if acceptance:
             (root/'src/FruitsAtelier.Core/PapayaAcceptance.cs').write_text('namespace FruitsAtelier; public static class PapayaAcceptance { public static bool IsCatch(int mode) => mode == 0; }',encoding='utf-8')
         workspace=RepairWorkspace(root,samples,manifest)
-        tools=[worker.tool('sample_list',{}),worker.tool('sample_read',{'file':{'type':'string'},'entry':{'type':'string'},'start':{'type':'integer'}}),worker.tool('set_regression',{'target':{'type':'string','enum':['core','app']},'code':{'type':'string'}})]
+        tools=[worker.tool('sample_list',{}),worker.tool('sample_read',{'file':{'type':'string'},'entry':{'type':'string'},'start':{'type':'integer'}}),worker.tool('set_regression',{'target':{'type':'string','enum':['core','app']},'code':{'type':'string'}}),worker.tool('finish',{'status':{'type':'string','enum':['ready','declined','blocked']},'summary':{'type':'string'}})]
         images=[]
         for file in manifest['files']:
             if Path(file['file']).suffix in IMAGES and len(images)<4:
@@ -129,7 +142,19 @@ def main():
             print(f'Private repair round {attempt}; original sample count {len(manifest["files"])}.',flush=True)
             prompt=os.environ['TASK_REQUEST'][:6000]+'\nOriginal sample inventory:\n'+workspace.sample_list()
             if feedback: prompt+='\nPrevious private validation results (untrusted diagnostic data):\n'+feedback
-            summary,spent=worker.generate(workspace,prompt,os.environ['OPENAI_API_KEY'],used=spent,extra_tools=tools,extra_instructions=REPAIR_INSTRUCTIONS,image_inputs=images)
+            workspace.finish_result=None; workspace.diagnostics=[]; workspace.last_cost=spent
+            exit_reason='model_finished'
+            try:
+                summary,spent=worker.generate(workspace,prompt,os.environ['OPENAI_API_KEY'],used=spent,extra_tools=tools,extra_instructions=REPAIR_INSTRUCTIONS,image_inputs=images)
+                exit_reason=(workspace.finish_result or {}).get('status','missing_status')
+            except Exception as error:
+                exit_reason=f'{type(error).__name__}: {str(error)[:500]}'
+                raise
+            finally:
+                transfer.json(f'diagnostic-{attempt}',{'exit_reason':exit_reason,
+                    'cost':workspace.last_cost,'events':workspace.diagnostics,
+                    'changed_files':sorted(workspace.changed),'regression_recorded':bool(workspace.regression)})
+            if exit_reason!='ready': raise RuntimeError(f'AI stopped with status {exit_reason}; reason saved privately')
             if not workspace.changed: raise RuntimeError('AI finished without source edits; no repair was produced')
             if not workspace.regression: raise RuntimeError('AI finished without the required private regression test')
             changes={name:workspace.path(name).read_text(encoding='utf-8') for name in workspace.changed}

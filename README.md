@@ -105,6 +105,12 @@ The development worker supports scoped literal search with pagination, bounded l
 reads and persistent working notes to reduce repeated queries after context compaction.
 Private CI logs record tool names, argument hashes, result sizes and error types,
 without tool bodies or original attachment contents.
+The editing AI ends through an explicit `finish` status: ready, declined or blocked.
+Ready requires edits and a private regression definition. One premature text response
+receives a continuation prompt within the same budget. Final response text, API status
+and controller exit reason are retained in job-scoped private diagnostics on the server,
+with the same original expiry and cleanup as attachment transfers (at most 24 hours).
+They are not GitHub log output or public artifacts; only the editing capability can read them.
 The development worker can search/read repository text and replace exact text
 in up to eight C#, Markdown or RESX files under source, tests, docs and macOS.
 It cannot edit workflow/build configuration, dependencies or its own controller.

@@ -29,8 +29,9 @@ draft for me" is too broad: do not plan or start it, and do not create a develop
 Briefly explain that it must be narrowed and suggest one small first step or ask for one precise
 behavior and acceptance criterion. Existing narrow hitsound fixes can still be valid; judge scope
 from the actual work, not keywords. Calling broad work a draft, MVP or small feature does not
-reduce its scope. When uncertain about a large feature, clarify before offering development.
-For oversized requests, refuse without editing files.
+reduce its scope. This is an already-confirmed development task, not a QA conversation.
+A single change to existing behavior may span several files and is not automatically oversized.
+Decline only with a concrete scope or feasibility blocker; uncertainty alone calls for focused inspection.
 Read AGENTS.md and relevant documentation before editing. Read docs/EDITING_PERFORMANCE.md for
 interactive editing changes. Preserve Windows/macOS compatibility and bilingual localization.
 Use search/read/replace tools. Search matches an exact literal phrase, with optional file/directory
@@ -39,7 +40,8 @@ queries in one response. Prefer code_search first: it returns ranked methods, ty
 with source locations from the current checkout, including edits. Use exact search for callers.
 Use remember to retain concise findings, relevant paths/line ranges and
 remaining work before older query results are compacted. No shell or execution tools exist.
-CI tests after you finish. Do not end with a completion summary until edits and the required private
+CI tests after you finish; absence of local execution tools is expected and is not a reason to stop.
+Do not end with a completion summary until edits and the required private
 regression have been recorded, unless declining or explicitly explaining why completion is impossible.
 Do not modify CI, dependencies, build configuration, credentials, licensing, public APIs unrelated
 to the request, or download anything. Keep the smallest complete change and add meaningful tests.
@@ -218,6 +220,7 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
     tools.extend(extra_tools)
     history = [{'role': 'user', 'content': ([{'type':'input_text','text':prompt}]+list(image_inputs)) if image_inputs else prompt}]
     next_input_bound = None
+    premature = 0
     for turn in range(MAX_TURNS):
         if compact_evidence(history):
             next_input_bound = None
@@ -253,6 +256,7 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
                     type(output_tokens) is int and output_tokens >= 0)
         # Completed requests use reported tokens at conservative rates; missing usage keeps the full reserve.
         used += ((input_tokens * 2.50 + output_tokens * 10) / 1_000_000) if measured else reserve
+        workspace.last_cost = used
         next_input_bound = input_tokens + output_tokens + 2000 if measured else None
         print(f'Model turn {turn+1}; conservative usage cost ${used:.3f}', flush=True)
         print('Usage diagnostic: ' + json.dumps({'turn':turn+1,'input_tokens':input_tokens,
@@ -262,10 +266,24 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
         history.extend(output)
         calls = [x for x in output if x.get('type') == 'function_call']
         if not calls:
+            summary = '\n'.join(p.get('text', p.get('refusal','')) for x in output if x.get('type') == 'message'
+                                for p in x.get('content', []) if p.get('type') in ('output_text','refusal'))
+            if hasattr(workspace, 'diagnostics'):
+                workspace.diagnostics.append({'turn':turn+1,'response_status':response.get('status'),
+                    'incomplete_details':response.get('incomplete_details'),'final_text':summary[:12000],
+                    'cost':used})
             if response.get('status') != 'completed':
                 raise RuntimeError('Model did not complete the request')
-            summary = '\n'.join(p.get('text', '') for x in output if x.get('type') == 'message'
-                                for p in x.get('content', []) if p.get('type') == 'output_text')
+            if getattr(workspace,'requires_finish',False) and premature < 1:
+                history.append({'role':'user','content':
+                    'Controller: this text response does not complete the confirmed task. Continue with edits '
+                    'and set_regression, or call finish with declined/blocked and the concrete reason. '
+                    'Do not ask for permission again. No budget has been reset.'})
+                premature += 1
+                next_input_bound = None
+                continue
+            if getattr(workspace,'requires_finish',False):
+                raise RuntimeError('AI ended without an explicit completion status; final text saved privately')
             if not summary:
                 raise RuntimeError('Model produced no completion summary')
             return summary[:6000], used
@@ -296,6 +314,8 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
                 next_input_bound += len(json.dumps(tool_output, ensure_ascii=False).encode())
                 if call['name'] == 'remember':
                     next_input_bound += len(workspace.notes.encode())
+        if getattr(workspace,'finish_result',None):
+            return workspace.finish_result['summary'], used
     raise RuntimeError('Task turn limit reached; no branch was published')
 
 

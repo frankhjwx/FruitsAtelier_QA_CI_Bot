@@ -53,6 +53,19 @@ class TransferTests(unittest.IsolatedAsyncioTestCase):
     async def test_other_users_cannot_bind_samples(self):
         with self.assertRaises(ValueError): create_transfer(99,2,'1565198087914599998',[3])
 
+    async def test_final_diagnostics_are_private_immutable_and_expire(self):
+        headers={'Authorization':'Bearer '+self.token}
+        endpoint='/ci/'+KEY+'/'
+        manifest=await (await self.client.get(endpoint+'manifest',headers=headers)).json()
+        tester={'Authorization':'Bearer '+manifest['test_token']}
+        response=await self.client.put(endpoint+'diagnostic-1',json={'final_text':'Concrete blocker'},headers=headers)
+        self.assertEqual(response.status,200)
+        self.assertEqual((await self.client.get(endpoint+'diagnostic-1',headers=tester)).status,403)
+        self.assertEqual((await self.client.put(endpoint+'diagnostic-1',json={},headers=headers)).status,409)
+        self.assertEqual((await (await self.client.get(endpoint+'diagnostic-1',headers=headers)).json())['final_text'],'Concrete blocker')
+        with patch('fa_bot.transfer.time.time',return_value=self.created+TTL+1):
+            self.assertEqual((await self.client.get(endpoint+'diagnostic-1',headers=headers)).status,410)
+
 class VerificationTests(unittest.TestCase):
     def test_success_needs_exact_samples_same_test_and_baseline_failure(self):
         results=[{'platform':p,'passed':True,'test_sha256':'abc','sample_hashes':['sample']} for p in ('windows','macos')]
