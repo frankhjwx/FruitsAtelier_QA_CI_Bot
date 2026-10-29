@@ -7,7 +7,7 @@ import shutil
 import subprocess
 import sys
 import time
-from ci_transfer import Transfer
+from ci_transfer import Transfer, token_from_environment
 from worker import LOCALIZATION_FILES
 
 HARNESS = r'''
@@ -90,7 +90,7 @@ def regression(root,private,code,target,samples,deadline):
 
 
 def main():
-    transfer=Transfer(os.environ['TRANSFER_URL'],os.environ['TRANSFER_FINGERPRINT'],os.environ['JOB_ID'],os.environ['TRANSFER_TOKEN'])
+    transfer=Transfer(os.environ['TRANSFER_URL'],os.environ['TRANSFER_FINGERPRINT'],os.environ['JOB_ID'],token_from_environment())
     attempt=int(os.environ['ATTEMPT']); platform=os.environ['VALIDATION_PLATFORM']
     root=Path(os.environ['RUNNER_TEMP'])/('fa-private-'+os.environ['JOB_ID']+'-'+str(attempt))
     baseline=Path(os.environ['SOURCE_ROOT']).resolve()

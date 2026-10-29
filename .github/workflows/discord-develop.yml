@@ -102,7 +102,6 @@ jobs:
         env:
           TRANSFER_URL: ${{ vars.FA_TRANSFER_URL }}
           TRANSFER_FINGERPRINT: ${{ vars.FA_TRANSFER_FINGERPRINT }}
-          TRANSFER_TOKEN: ${{ inputs.transfer_token }}
           BOT_REPO: ${{ github.repository }}
           BOT_ACTIONS_TOKEN: ${{ github.token }}
           OPENAI_API_KEY: ${{ secrets.FA_OPENAI_CI_KEY }}

@@ -57,7 +57,6 @@ jobs:
         env:
           TRANSFER_URL: ${{ vars.FA_TRANSFER_URL }}
           TRANSFER_FINGERPRINT: ${{ vars.FA_TRANSFER_FINGERPRINT }}
-          TRANSFER_TOKEN: ${{ inputs.transfer_token }}
           FA_ACCEPTANCE: ${{ inputs.acceptance }}
           JOB_ID: ${{ inputs.job_id }}
           ATTEMPT: ${{ inputs.attempt }}

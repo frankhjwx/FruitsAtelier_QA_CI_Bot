@@ -2,11 +2,29 @@
 import hashlib
 import http.client
 import json
+import os
 from pathlib import Path
 import re
 import ssl
 import time
 from urllib.parse import urlsplit
+
+
+class TransferHTTPError(RuntimeError):
+    def __init__(self, status):
+        self.status = status
+        super().__init__(f'Transfer returned HTTP {status}')
+
+
+def token_from_environment():
+    token = os.environ.get('TRANSFER_TOKEN')
+    if not token:
+        event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+        inputs = event['inputs']
+        if inputs['job_id'] != os.environ['JOB_ID']:
+            raise ValueError('Transfer task identity mismatch')
+        token = inputs['transfer_token']
+    return token
 
 class Transfer:
     def __init__(self,url,fingerprint,key,token):
@@ -17,14 +35,17 @@ class Transfer:
         self.fingerprint,self.key,self.token=fingerprint,key,token
 
     def request(self,item,data=None):
-        attempts = 3 if data is None else 1
+        attempts = 4
         for attempt in range(attempts):
             try:
                 return self._request_once(item,data)
-            except (OSError, http.client.HTTPException):
+            except (OSError, http.client.HTTPException, TransferHTTPError) as error:
+                if isinstance(error, TransferHTTPError) and error.status not in (408, 429, 500, 502, 503, 504):
+                    raise
                 if attempt + 1 == attempts:
                     raise
-                time.sleep(attempt + 1)
+                print(f'Private transfer retry {attempt + 1}/{attempts - 1}: {type(error).__name__}', flush=True)
+                time.sleep(2 ** attempt)
 
     def _request_once(self,item,data=None):
         if not re.fullmatch(r'[A-Za-z0-9_.-]+',item): raise ValueError('Invalid transfer resource')
@@ -37,7 +58,7 @@ class Transfer:
             connection.request('PUT' if data is not None else 'GET',f'/ci/{self.key}/{item}',body,
                                {'Authorization':'Bearer '+self.token,'Content-Type':'application/json'})
             response=connection.getresponse()
-            if response.status!=200: raise RuntimeError(f'Transfer returned HTTP {response.status}')
+            if response.status!=200: raise TransferHTTPError(response.status)
             raw=response.read(40*1024*1024+1)
             if len(raw)>40*1024*1024: raise ValueError('Transfer exceeds size limit')
             return raw

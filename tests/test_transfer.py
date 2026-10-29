@@ -43,6 +43,7 @@ class TransferTests(unittest.IsolatedAsyncioTestCase):
         response=await self.client.put(endpoint+'candidate-1',json={},headers=tester); self.assertEqual(response.status,403)
         response=await self.client.put(endpoint+'result-1-windows',json={},headers=headers); self.assertEqual(response.status,403)
         response=await self.client.put(endpoint+'result-1-windows',json={'passed':False},headers=tester); self.assertEqual(response.status,200)
+        response=await self.client.put(endpoint+'result-1-windows',json={'passed':False},headers=tester); self.assertEqual(response.status,200)
         response=await self.client.put(endpoint+'result-1-windows',json={'passed':True},headers=tester); self.assertEqual(response.status,409)
     async def test_candidate_resources_fit_without_expanding_diagnostic_limit(self):
         endpoint='/ci/'+KEY+'/'
@@ -78,6 +79,23 @@ class TransferTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await self.client.get(endpoint+'diagnostic-1',headers=headers)).status,410)
 
 class VerificationTests(unittest.TestCase):
+    def test_failed_infrastructure_retries_only_failed_jobs_once(self):
+        from repair_ci import wait_validation
+        run={'id':10,'status':'completed','conclusion':'failure','run_attempt':1,'display_title':f'FA validation {KEY}.1'}
+        completed={**run,'conclusion':'success','run_attempt':2}
+        with patch('repair_ci.gh',side_effect=[{'workflow_runs':[run]},run,None,run,completed]) as api, patch('repair_ci.time.sleep'):
+            wait_validation(KEY,1,'a'*40,'fake','test')
+        writes=[c for c in api.call_args_list if len(c.args)>2]
+        self.assertEqual(len(writes),1)
+        self.assertEqual(writes[0].args[0],'/actions/runs/10/rerun-failed-jobs')
+
+    def test_repeated_infrastructure_failure_stops_without_new_model_or_dispatch(self):
+        from repair_ci import wait_validation
+        run={'id':10,'status':'completed','conclusion':'failure','run_attempt':1,'display_title':f'FA validation {KEY}.1'}
+        with patch('repair_ci.gh',side_effect=[{'workflow_runs':[run]},run,None,{**run,'run_attempt':2}]) as api, patch('repair_ci.time.sleep'):
+            with self.assertRaisesRegex(RuntimeError,'infrastructure'):wait_validation(KEY,1,'a'*40,'fake','test')
+        self.assertEqual(len([c for c in api.call_args_list if len(c.args)>2]),1)
+
     def test_success_needs_exact_samples_same_test_and_baseline_failure(self):
         results=[{'platform':p,'passed':True,'test_sha256':'abc','sample_hashes':['sample']} for p in ('windows','macos')]
         self.assertFalse(verified(results,'abc',['sample']))
@@ -113,7 +131,7 @@ class DiagnosticTests(unittest.TestCase):
 
 
 class TransferRetryTests(unittest.TestCase):
-    def test_transient_reads_retry_but_immutable_writes_do_not(self):
+    def test_transient_reads_and_identical_writes_retry(self):
         from ci_transfer import Transfer
         client=object.__new__(Transfer)
         with patch.object(client,'_request_once',side_effect=[TimeoutError(),b'{}']) as request, patch('ci_transfer.time.sleep'):
@@ -121,10 +139,43 @@ class TransferRetryTests(unittest.TestCase):
             self.assertEqual(request.call_count,2)
         with patch.object(client,'_request_once',side_effect=TimeoutError()) as request, patch('ci_transfer.time.sleep'):
             with self.assertRaises(TimeoutError): client.request('candidate-1')
-            self.assertEqual(request.call_count,3)
-        with patch.object(client,'_request_once',side_effect=TimeoutError()) as request:
+            self.assertEqual(request.call_count,4)
+        with patch.object(client,'_request_once',side_effect=TimeoutError()) as request, patch('ci_transfer.time.sleep'):
             with self.assertRaises(TimeoutError): client.request('result-1-windows',{'passed':False})
-            self.assertEqual(request.call_count,1)
+            self.assertEqual(request.call_count,4)
+        with patch.object(client,'_request_once',side_effect=[TimeoutError(),b'{"stored":true}']) as request, patch('ci_transfer.time.sleep'):
+            self.assertEqual(client.json('result-1-windows',{'passed':False}),{'stored':True})
+            self.assertEqual(request.call_args_list[0],request.call_args_list[1])
         with patch.object(client,'_request_once',side_effect=ValueError('Transfer TLS fingerprint mismatch')) as request:
             with self.assertRaises(ValueError): client.request('candidate-1')
             self.assertEqual(request.call_count,1)
+
+    def test_only_transient_http_statuses_retry(self):
+        from ci_transfer import Transfer, TransferHTTPError
+        client=object.__new__(Transfer)
+        for status, count in ((503,4),(401,1),(403,1),(404,1),(409,1),(413,1)):
+            with self.subTest(status=status), patch.object(client,'_request_once',side_effect=TransferHTTPError(status)) as request, patch('ci_transfer.time.sleep'):
+                with self.assertRaises(TransferHTTPError):client.request('result-1-windows',{'passed':False})
+                self.assertEqual(request.call_count,count)
+
+    def test_event_capability_is_task_scoped_without_step_environment(self):
+        from ci_transfer import token_from_environment
+        with tempfile.TemporaryDirectory() as folder:
+            event=Path(folder)/'event.json'
+            event.write_text(json.dumps({'inputs':{'job_id':KEY,'transfer_token':'test-only-capability'}}))
+            with patch.dict(os.environ,{'GITHUB_EVENT_PATH':str(event),'JOB_ID':KEY},clear=True):
+                self.assertEqual(token_from_environment(),'test-only-capability')
+                os.environ['JOB_ID']='other'
+                with self.assertRaises(ValueError):token_from_environment()
+
+    def test_atomic_identical_retry_preserves_content_and_conflicts(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from fa_bot.transfer import store_immutable
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'result-1-windows.json'
+            body=b'{"passed":false}'
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                list(pool.map(lambda _:store_immutable(path,body),range(12)))
+            self.assertEqual(path.read_bytes(),body)
+            with self.assertRaises(web.HTTPConflict):store_immutable(path,b'{"passed":true}')
+            self.assertEqual(list(Path(folder).iterdir()),[path])

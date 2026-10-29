@@ -133,6 +133,17 @@ falls back to conservative rates. Future reservations never assume cache hits;
 reported budget cost is an estimate, not the final API invoice.
 See the [official model pages](https://developers.openai.com/api/docs/models).
 
+Private CI transfers retry transient connection failures and selected transient HTTP
+responses up to four attempts. Uploads publish complete files atomically: replaying
+identical bytes succeeds, while different content at the same resource is rejected.
+TLS certificate pinning, role restrictions, size limits and expiry still apply.
+File responses use buffered TLS writes. Workflow capabilities are read from the
+task-scoped event file rather than exposed in step environment logs.
+Failed validation infrastructure can rerun failed GitHub jobs once against the same
+candidate without another model call; logical test failures return to the repair loop.
+UI regression setup must follow the repository's input conventions and wait for
+asynchronous readiness before asserting the requested behavior.
+
 The durable UTC-calendar-month ledger limits automatic QA to $10 and development
 reservations to $80, leaving $10 of a $100 target outside automated allocation.
 QA reserves $0.02 before a request and settles successful calls using reported

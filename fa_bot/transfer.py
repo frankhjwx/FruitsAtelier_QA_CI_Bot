@@ -9,6 +9,7 @@ import re
 import secrets
 import shutil
 import ssl
+import tempfile
 import time
 from aiohttp import web
 from .attachments import TTL, MAX_BATCH, root_path, cleanup
@@ -89,7 +90,7 @@ async def transfer(request):
         if role=='edit': result['test_token']=data['test']
         return web.json_response(result,headers={'Cache-Control':'no-store'})
     if request.method=='GET' and item in {f['file'] for f in data['files']}:
-        return web.FileResponse(folder/item,headers={'Cache-Control':'no-store'})
+        return web.Response(body=await asyncio.to_thread((folder/item).read_bytes),headers={'Cache-Control':'no-store'})
     if not re.fullmatch(r'(candidate-[1-3]|diagnostic-[1-3]|result-[1-3]-(windows|macos))',item):
         raise web.HTTPNotFound()
     if item.startswith('diagnostic') and role!='edit':
@@ -101,19 +102,35 @@ async def transfer(request):
         limit = CANDIDATE_LIMIT if item.startswith('candidate-') else 1_000_000
         if len(body)>limit: raise web.HTTPRequestEntityTooLarge(max_size=limit,actual_size=len(body))
         json.loads(body)
-        path=folder/(item+'.json')
-        # Result submissions are immutable; one validation run owns each round.
-        try:
-            with path.open('xb') as out: out.write(body)
-        except FileExistsError:
-            raise web.HTTPConflict()
-        os.chmod(path,0o600)
+        await asyncio.to_thread(store_immutable, folder/(item+'.json'), body)
         return web.json_response({'stored':True})
     if request.method=='GET':
         path=folder/(item+'.json')
         if not path.is_file(): raise web.HTTPNotFound()
-        return web.FileResponse(path,headers={'Cache-Control':'no-store'})
+        return web.Response(body=await asyncio.to_thread(path.read_bytes),content_type='application/json',headers={'Cache-Control':'no-store'})
     raise web.HTTPMethodNotAllowed(request.method,['GET','PUT'])
+
+
+def store_immutable(path, body):
+    # Publish a complete file atomically; retrying a lost acknowledgement cannot overwrite it.
+    with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as output:
+        temp = Path(output.name)
+        try:
+            output.write(body)
+            output.flush()
+            os.fsync(output.fileno())
+        except BaseException:
+            output.close()
+            temp.unlink(missing_ok=True)
+            raise
+    try:
+        try:
+            os.link(temp, path)
+        except FileExistsError:
+            if path.read_bytes() != body:
+                raise web.HTTPConflict()
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 async def start_transfer_server():

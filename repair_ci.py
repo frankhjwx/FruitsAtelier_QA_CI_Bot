@@ -9,7 +9,7 @@ import time
 import zipfile
 import worker
 from context_pack import evidence_pack, concise_failures
-from ci_transfer import Transfer
+from ci_transfer import Transfer, token_from_environment
 from fa_bot.handoff import decode, ready
 from fa_bot.attachments import IMAGES, inspect_file, excerpt
 
@@ -26,6 +26,10 @@ project and grants its test assembly's existing internal access. No main method,
 network, environment-based expected result, source-file matching or fake assertions. Exercise actual
 behavior and inspect at least one original sample when supplied. No samples means use synthetic
 in-memory inputs. Never create a passing test by weakening assertions or ignoring a failing sample.
+For editor UI tests, read the existing test helpers before synthesizing input. Verify mouse-button
+conventions and wait for asynchronous media/conversion readiness with a bounded timeout. Assert
+fixture preconditions before the feature assertion; invalid setup must raise a normal exception,
+not RegressionFailure. Preserve existing behavioral assertions when fixing a missing readiness wait.
 The EXACT SAME test must build on both baseline and fixed source, fail baseline with an actual
 RegressionFailure, and pass fixed source. Compilation errors and arbitrary crashes are not a
 reproduction. New API tests should use existing behavior or reflection to compile on the baseline.
@@ -109,11 +113,21 @@ def wait_validation(key,attempt,sha,token,test_token,acceptance=False):
     if found is None:
         gh(path+'/dispatches',token,{'ref':'main','inputs':{'job_id':key,'attempt':str(attempt),'commit':sha,'transfer_token':test_token,'acceptance':str(acceptance).lower()}})
     start=time.monotonic()
-    while time.monotonic()-start<1800:
+    retried_attempt=None
+    while time.monotonic()-start<2700:
         found=gh('/actions/runs/'+str(found['id']),token) if found else find()
         if found and found['status']=='completed':
-            if found['conclusion']!='success': raise RuntimeError('Validation infrastructure failed')
-            return
+            if retried_attempt is not None and found.get('run_attempt',1)<=retried_attempt:
+                # GitHub can briefly return the completed attempt after accepting a rerun.
+                time.sleep(15)
+                continue
+            if found['conclusion']=='success': return
+            if retried_attempt is None and found['conclusion'] in ('failure','timed_out'):
+                retried_attempt=found.get('run_attempt',1)
+                gh('/actions/runs/'+str(found['id'])+'/rerun-failed-jobs',token,{})
+                print('Retrying failed validation infrastructure once; candidate and model budget are unchanged.',flush=True)
+            else:
+                raise RuntimeError('Validation infrastructure failed')
         if found is None and time.monotonic()-start>600: raise RuntimeError('Validation dispatch uncertain')
         time.sleep(15)
     raise TimeoutError('Validation did not finish')
@@ -144,7 +158,7 @@ def main():
     if acceptance and benchmark: raise RuntimeError('Choose synthetic acceptance or real benchmark, not both')
     if pending and not (acceptance or benchmark): raise RuntimeError('The shared branch has a PR awaiting review')
     base=subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=True).strip()
-    transfer=Transfer(os.environ['TRANSFER_URL'],os.environ['TRANSFER_FINGERPRINT'],key,os.environ['TRANSFER_TOKEN'])
+    transfer=Transfer(os.environ['TRANSFER_URL'],os.environ['TRANSFER_FINGERPRINT'],key,token_from_environment())
     samples=Path(os.environ['RUNNER_TEMP'])/('fa-samples-'+key)
     benchmark_verified=False
     try:
