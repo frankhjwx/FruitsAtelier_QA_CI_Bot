@@ -50,6 +50,15 @@ class AttachmentTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(cleanup(temp, now=created+TTL+1), 1)
             self.assertFalse(folder.exists())
 
+    def test_replacement_upload_excludes_expired_reply_attachments(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store=AttachmentStore(folder)
+            old=Path(folder)/f'{int((time.time()-TTL-10)*1000)}_1_2_3'
+            fresh=Path(folder)/f'{int(time.time()*1000)}_1_2_4'
+            old.mkdir(); fresh.mkdir()
+            self.assertEqual(store.available_ids(1,2,[4,3]),[4])
+            self.assertEqual(store.available_ids(99,2,[4]),[])
+
     async def test_reject_external_download_and_remove_partial_batch(self):
         with tempfile.TemporaryDirectory() as temp:
             store = AttachmentStore(temp)

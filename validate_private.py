@@ -111,7 +111,16 @@ def main():
                     prep=run([sys.executable,'scripts/Build-MapsetVerifier.py'],source,deadline)
                     if prep['exit']!=0: result[label]={'prepare':prep}; return
                 print(f'Running {label} sample regression.',flush=True)
-                result[label]=regression(source,root/(label+'-test'),candidate['regression']['code'],candidate['regression']['target'],sample_index,deadline)
+                stage_samples=root/(label+'-samples')
+                stage_samples.mkdir()
+                for entry in manifest['files']:
+                    original=root/'samples'/entry['file']
+                    if hashlib.sha256(original.read_bytes()).hexdigest()!=entry['sha256']:
+                        raise ValueError('Original sample changed during validation')
+                    shutil.copyfile(original,stage_samples/entry['file'])
+                stage_index=root/(label+'-samples.json')
+                stage_index.write_text(json.dumps([{'path':str(stage_samples/f['file']),'name':f['name']} for f in manifest['files']]),encoding='utf-8')
+                result[label]=regression(source,root/(label+'-test'),candidate['regression']['code'],candidate['regression']['target'],stage_index,deadline)
             before=result['baseline']; after=result['fixed']
             if (before.get('run') or {}).get('exit')!=42 or (after.get('run') or {}).get('exit')!=0:
                 return
