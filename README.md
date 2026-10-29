@@ -5,7 +5,7 @@ questions, evidence retrieval and job tracking. Its private GitHub workflow
 handles source changes and private sample-backed regression. The public FruitsAtelier
 repository's GitHub-hosted workflow repeats release checks and builds experimental Windows packages.
 
-This is an independent private repository. Its default `main` branch contains
+This is an independent repository. Its default `main` branch contains
 the Bot and editing workflow. The editor repository is read at `dev`; development tasks publish
 only the shared `codex-discord-bug-fix` branch there. Bot changes do not modify the
 editor's `dev` or `main` branches.
@@ -69,10 +69,10 @@ bug is absent.
 
 Successful editor CI runs provide packages and checksums as GitHub Actions
 artifacts in `frankhjwx/FruitsAtelier`, with seven-day retention. Users must sign
-into GitHub to download them; access to this private Bot repository is not
+into GitHub to download them; access to this Bot repository is not
 required. Windows packages use `0.0.2-alpha.<run-number>` and are for separate test
-installations, not the stable updater feed. macOS regressions run, but this
-workflow does not distribute macOS packages.
+installations, not the stable updater feed. This workflow validates and packages
+Windows only; it does not certify macOS behavior.
 
 After a successful package run, **Test passed - Open PR** lets the original
 requester confirm their test result. The controller opens a PR from the shared
@@ -206,8 +206,8 @@ They are not GitHub log output or public artifacts; only the editing capability 
 The development worker can search/read repository text and replace exact text
 in up to eight C#, Markdown or RESX files under source, tests, docs and macOS.
 It cannot edit workflow/build configuration, dependencies or its own controller.
-It has no shell tool and never executes generated code. Separate Windows and
-macOS jobs execute the changed source without OpenAI/Discord secrets and with
+It has no shell tool and never executes generated code. Separate Windows validation
+jobs execute the changed source without OpenAI/Discord secrets and with
 read-only repository permissions. No changes are merged automatically.
 
 ## Deployment
@@ -399,7 +399,7 @@ Windows runner builds the same test against the unchanged baseline and candidate
 Baseline compilation failure is not a reproduction: the test must compile, raise
 an explicit behavioral regression failure before the fix, and pass after it.
 Supplied samples must be accessed through the private harness. Windows regression
-suites and the macOS non-device checks also run. The controller verifies sample
+suites also run. macOS checks are disabled. The controller verifies sample
 hashes and test identity before publishing source and requesting a public package.
 This does not establish manual GUI, audio perception or device-specific behavior.
 Unsupported or unreproduced cases are reported as unverified, never repaired.
