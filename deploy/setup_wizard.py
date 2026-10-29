@@ -67,9 +67,10 @@ def token_link(kind):
 
 
 def ssh_command(remote):
-    return ['ssh', '-p', '29036', '-i', str(Path.home()/'.ssh/himiko_deploy'),
+    return ['ssh', '-p', '22', '-i', str(Path.home()/'.ssh/himiko_deploy'),
+            '-o', 'KexAlgorithms=curve25519-sha256',
             '-o', 'StrictHostKeyChecking=yes', '-o', 'BatchMode=yes',
-            '-o', 'ConnectTimeout=15', 'root@45.78.30.208', remote]
+            '-o', 'ConnectTimeout=15', 'root@198.44.103.184', remote]
 
 
 def run_command(args, data=None, timeout=60):
