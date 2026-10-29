@@ -1,6 +1,5 @@
 import aiohttp
-import io
-import zipfile
+from .config import SOURCE_REPO
 
 
 class GitHub:
@@ -24,37 +23,16 @@ class GitHub:
                            json={'ref': 'main', 'inputs': {
                                'job_id': key, 'request': request, 'branch': branch}})
 
-    async def find_run(self, key):
-        result = await self.request('GET', f'/repos/{self.repo}/actions/workflows/discord-develop.yml/runs?event=workflow_dispatch&per_page=100')
-        matches = [r for r in result['workflow_runs'] if r['display_title'] == f'FA task {key}']
+    async def find_run(self, key, build=False):
+        repo = SOURCE_REPO if build else self.repo
+        workflow = 'discord-preview.yml' if build else 'discord-develop.yml'
+        title = f'FA preview {key}' if build else f'FA task {key}'
+        result = await self.request('GET', f'/repos/{repo}/actions/workflows/{workflow}/runs?event=workflow_dispatch&per_page=100')
+        matches = [r for r in result['workflow_runs'] if r['display_title'] == title]
         if len(matches) > 1:
             raise RuntimeError('Duplicate workflow runs require maintainer review')
         return matches[0] if matches else None
 
-    async def run(self, run_id):
-        return await self.request('GET', f'/repos/{self.repo}/actions/runs/{run_id}')
-
-    async def screenshots(self, run_id, key):
-        result = await self.request('GET', f'/repos/{self.repo}/actions/runs/{run_id}/artifacts')
-        candidates = [a for a in result['artifacts'] if a['name'] == 'demo-screenshots-' + key and not a['expired']]
-        if not candidates or candidates[0]['size_in_bytes'] > 20_000_000:
-            return []
-        artifact = candidates[0]
-        async with self.session.get(f'https://api.github.com/repos/{self.repo}/actions/artifacts/{artifact["id"]}/zip',
-                                    headers=self.headers, timeout=aiohttp.ClientTimeout(total=30)) as response:
-            response.raise_for_status()
-            data = bytearray()
-            async for chunk in response.content.iter_chunked(65536):
-                data.extend(chunk)
-                if len(data) > 20_000_000:
-                    raise ValueError('Screenshot archive too large')
-        images = []
-        with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            for item in archive.infolist():
-                if item.filename.endswith('.png') and item.file_size <= 4_000_000:
-                    content = archive.read(item)
-                    if content.startswith(b'\x89PNG\r\n\x1a\n'):
-                        images.append((item.filename.rsplit('/', 1)[-1], content))
-                    if len(images) == 2:
-                        break
-        return images
+    async def run(self, run_id, build=False):
+        repo = SOURCE_REPO if build else self.repo
+        return await self.request('GET', f'/repos/{repo}/actions/runs/{run_id}')

@@ -1,6 +1,5 @@
 import asyncio
 import contextlib
-import io
 import logging
 import os
 import re
@@ -18,10 +17,10 @@ from .store import Store
 
 LOG = logging.getLogger('fa_bot')
 TEMPLATE = ('使用问题：版本 / Windows 或 macOS / 想完成什么 / 已尝试什么\n'
-            'Bug：版本 / 最短复现步骤 / 预期结果 / 实际结果 / 截图或脱敏示例\n'
+            'Bug：版本 / 最短复现步骤 / 预期结果 / 实际结果 / 脱敏示例\n'
             '小功能：使用场景 / 期望行为 / 一个具体例子\n'
             'Usage: version, OS, goal, what you tried.\n'
-            'Bug: version, steps, expected vs actual, screenshot or sanitized example.\n'
+            'Bug: version, steps, expected vs actual, sanitized example.\n'
             'Feature: use case, desired behavior, one concrete example.')
 
 
@@ -114,33 +113,33 @@ class Bot(discord.Client):
         while True:
             for job in self.store.pending():
                 try:
-                    run = await (self.github.run(job['run_id']) if job['run_id'] else self.github.find_run(job['id']))
+                    building = job['status'] == 'building'
+                    run = await (self.github.run(job['run_id'], build=building) if job['run_id'] else self.github.find_run(job['id']))
                     if not run:
                         if time.time() - job['created'] > 600:
                             self.store.update(job['id'], 'dispatch_uncertain')
                         continue
                     if run['status'] != 'completed':
-                        self.store.update(job['id'], 'running', run['id'], run['html_url'])
+                        self.store.update(job['id'], 'building' if building else 'running', run['id'], run['html_url'])
+                        continue
+                    if not building and run['conclusion'] == 'success':
+                        preview = await self.github.find_run(job['id'], build=True)
+                        if preview:
+                            self.store.update(job['id'], 'building', preview['id'], preview['html_url'])
+                        elif time.time() - job['created'] > 1800:
+                            self.store.update(job['id'], 'build_dispatch_uncertain')
                         continue
                     # Mark before sending: a Discord timeout must not cause duplicate notifications.
                     self.store.update(job['id'], 'notifying', run['id'], run['html_url'])
                     channel = self.get_channel(int(job['channel'])) or await self.fetch_channel(int(job['channel']))
                     status = run['conclusion']
-                    text = (f'Task `{job["id"]}`: **{status}**\n{run["html_url"]}\n'
+                    link = run['html_url'] if building else 'Code editing did not complete; the maintainer can inspect the private worker log.'
+                    text = (f'Task `{job["id"]}`: **{status}**\n{link}\n'
                             f'Branch: `{job["branch"]}`\n'
-                            'Successful runs contain the tested package and available screenshots. '
+                            'Successful editor CI runs contain the tested package. '
                             'Use /revise with this task ID for another attempt.\n'
-                            '成功任务可在运行页下载测试包和可用截图；继续修改请使用 /revise。')
-                    files = []
-                    if status == 'success':
-                        try:
-                            files = [discord.File(io.BytesIO(data), filename=name)
-                                     for name, data in await self.github.screenshots(run['id'], job['id'])]
-                        except Exception as error:
-                            LOG.warning('Screenshots unavailable: %s', type(error).__name__)
-                    if files:
-                        text += '\n附图为 CI 演示场景，非用户问题复现。 / Images are CI demo scenes, not a reproduction of your report.'
-                    await channel.send(text, files=files)
+                            '成功任务可在运行页下载测试包；继续修改请使用 /revise。')
+                    await channel.send(text)
                     self.store.update(job['id'], status)
                 except Exception as error:
                     LOG.warning('Job polling failed for %s: %s', job['id'], type(error).__name__)
@@ -199,13 +198,6 @@ class Bot(discord.Client):
         @self.tree.command(name='template', description='Question and feature request templates')
         async def template(interaction: discord.Interaction):
             await interaction.response.send_message(TEMPLATE, ephemeral=True)
-
-        @self.tree.command(name='screenshot', description='Show the published FruitsAtelier editor overview')
-        async def screenshot(interaction: discord.Interaction):
-            embed = discord.Embed(title='FruitsAtelier editor overview',
-                                  description='Published documentation image; not a live bug reproduction.')
-            embed.set_image(url='https://raw.githubusercontent.com/frankhjwx/FruitsAtelier/main/assets/screenshots/twin-bloom.png')
-            await interaction.response.send_message(embed=embed)
 
         @self.tree.command(name='task', description='Look up one of your task results')
         async def task(interaction: discord.Interaction, task_id: str):

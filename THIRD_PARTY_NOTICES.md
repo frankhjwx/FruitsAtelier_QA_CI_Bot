@@ -10,6 +10,6 @@ separately and are not vendored into this repository.
 
 Transitive dependencies are also version-pinned in `requirements.txt`; their
 installed distribution metadata and license files are authoritative. The Bot
-uses the editor's existing build, regression and screenshot entry points on
+uses the editor's existing build and regression entry points on
 GitHub-hosted runners. Editor packages retain the editor's third-party notices
 and corresponding-source attachments.

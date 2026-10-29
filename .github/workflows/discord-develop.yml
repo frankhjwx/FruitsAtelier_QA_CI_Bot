@@ -9,7 +9,7 @@ on:
         required: true
         type: string
       request:
-        description: Small fix, feature, or follow-up request (public CI input)
+        description: Small fix, feature, or follow-up request
         required: true
         type: string
       branch:
@@ -75,95 +75,12 @@ jobs:
           SOURCE_ROOT: ${{ github.workspace }}/source
         run: python controller/worker.py
 
-  windows:
-    needs: edit
-    runs-on: windows-2022
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: frankhjwx/FruitsAtelier
-          ref: ${{ needs.edit.outputs.commit }}
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-      - name: Prepare pinned verifier and build
-        shell: pwsh
-        run: |
-          python scripts/Build-MapsetVerifier.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet build FruitsAtelier.sln -c Release -p:RestoreLockedMode=true
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Run regression suites
-        shell: pwsh
-        run: |
-          foreach ($suite in @('Core', 'Gameplay', 'App', 'Skinning', 'SkinArchive')) {
-            dotnet run --no-build --project "tests/FruitsAtelier.$suite.Tests" -c Release
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-          dotnet run --no-build --project tests/FruitsAtelier.Formats.Tests -c Release -- --skip-external-fixtures
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet run --no-build --project tests/FruitsAtelier.Audio.Tests -c Release -- --hitsound-check
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          dotnet run --no-build --project tests/FruitsAtelier.App.Tests -c Release -- --mapset-verifier-engine-check
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Capture demo editor screenshots
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $process = Start-Process src/FruitsAtelier.App/bin/Release/net10.0-windows/FruitsAtelier.App.exe -ArgumentList '--screenshot-render-check' -WindowStyle Hidden -PassThru
-          if (!$process.WaitForExit(120000)) { $process.Kill(); throw 'Screenshot capture timed out' }
-          if ($process.ExitCode -ne 0) { throw 'Screenshot capture unavailable' }
-          Add-Type -AssemblyName System.Drawing
-          New-Item -ItemType Directory -Force artifacts/discord-screenshots | Out-Null
-          Get-ChildItem artifacts/tests/screenshot-native -Filter '*.bmp' | ForEach-Object {
-            $image = [System.Drawing.Image]::FromFile($_.FullName)
-            try { $image.Save((Join-Path (Resolve-Path artifacts/discord-screenshots) ($_.BaseName + '.png')), [System.Drawing.Imaging.ImageFormat]::Png) }
-            finally { $image.Dispose() }
-          }
-      - name: Build and verify experimental package
-        shell: pwsh
+      - name: Dispatch public editor validation and package
         env:
-          BUILD_NUMBER: ${{ github.run_number }}
-        run: |
-          ./scripts/Publish-Windows.ps1 -Version "0.0.0-alpha.$env:BUILD_NUMBER"
-          ./scripts/Test-WindowsPackage.ps1 -Archive "artifacts/releases/FruitsAtelier-0.0.0-alpha.$env:BUILD_NUMBER-win-x64.zip"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-experimental-${{ inputs.job_id }}
-          path: |
-            artifacts/releases/*.zip
-            artifacts/releases/*.sha256
-          if-no-files-found: error
-          retention-days: 7
-          compression-level: 0
-      - uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: demo-screenshots-${{ inputs.job_id }}
-          path: artifacts/discord-screenshots/*.png
-          if-no-files-found: ignore
-          retention-days: 7
-
-  macos:
-    needs: edit
-    runs-on: macos-15
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: frankhjwx/FruitsAtelier
-          ref: ${{ needs.edit.outputs.commit }}
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: macOS/global.json
-      - run: python scripts/Build-MapsetVerifier.py
-      - run: bash scripts/Test-Mac.sh --skip-device-tests
+          GH_TOKEN: ${{ secrets.FA_SOURCE_TOKEN }}
+          JOB_ID: ${{ inputs.job_id }}
+          SOURCE_SHA: ${{ steps.edit.outputs.commit }}
+          TASK_BRANCH: ${{ inputs.branch }}
+        run: >-
+          gh workflow run discord-preview.yml --repo frankhjwx/FruitsAtelier --ref main
+          -f "job_id=$JOB_ID" -f "commit=$SOURCE_SHA" -f "branch=$TASK_BRANCH"

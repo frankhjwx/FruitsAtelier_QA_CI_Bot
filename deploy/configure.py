@@ -11,7 +11,7 @@ root.mkdir(mode=0o750, exist_ok=True)
 gid = grp.getgrnam('fruitsatelier-qabot').gr_gid
 os.chown(root, 0, gid)
 for name, label in [('openai-key', 'OpenAI QA service account key'),
-                    ('github-token', 'GitHub fine-grained token (FruitsAtelier_QA_CI_Bot only; Actions read/write, Contents read)')]:
+                    ('github-token', 'GitHub fine-grained token (Bot and editor repositories; Actions read/write, Contents read)')]:
     value = getpass.getpass(label + ' (empty keeps existing): ').strip()
     if not value:
         if not (root / name).exists():

@@ -62,7 +62,7 @@ class Store:
         return self.db.execute('SELECT * FROM jobs WHERE id=?', (key,)).fetchone()
 
     def pending(self):
-        return self.db.execute("SELECT * FROM jobs WHERE status IN ('dispatching','queued','running')").fetchall()
+        return self.db.execute("SELECT * FROM jobs WHERE status IN ('dispatching','queued','running','building')").fetchall()
 
     def recent_jobs(self, owner):
         return self.db.execute('SELECT count(*) FROM jobs WHERE owner=? AND created>?',

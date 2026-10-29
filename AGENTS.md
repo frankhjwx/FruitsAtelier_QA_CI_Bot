@@ -1,7 +1,8 @@
 # Bot development
 
-This repository is independent of the FruitsAtelier editor. Keep all Bot source,
-deployment scripts, CI workflows and local artifacts here. Do not place Bot code
+This private repository is independent of the FruitsAtelier editor. Keep Bot source,
+deployment scripts, editing workflows and local artifacts here. The public editor
+repository owns its test and package workflow. Do not place Bot code
 or configuration in the editor repository or commit it to the editor's dev branch.
 
 - Server runtime: direct Discord gateway, OpenAI Responses API, public evidence
@@ -16,5 +17,5 @@ or configuration in the editor repository or commit it to the editor's dev branc
 - Verify with python -m unittest discover -s tests -v. Put local environments,
   logs and deployment archives under ignored artifacts/.
 - Document implemented behavior and distinguish mock tests from live API,
-  Discord, screenshot and package acceptance. Preserve the user's selected models.
+  Discord and package acceptance. Preserve the user's selected models.
 - Do not start subagents unless explicitly requested.

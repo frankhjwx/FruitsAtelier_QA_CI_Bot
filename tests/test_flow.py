@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch, AsyncMock
 
 from fa_bot.bot import Bot
+from fa_bot.github import GitHub
 from fa_bot.qa import answer
 from test_boundaries import worker
 
@@ -50,6 +51,44 @@ class Knowledge:
 
 
 class FlowTests(unittest.IsolatedAsyncioTestCase):
+    async def test_public_build_routing_uses_editor_repository(self):
+        github = GitHub(None, 'fake', 'frankhjwx/FruitsAtelier_QA_CI_Bot')
+        github.request = AsyncMock(return_value={'workflow_runs': [
+            {'display_title': 'FA preview 123', 'id': 4},
+            {'display_title': 'FA task 123', 'id': 5}]})
+        found = await github.find_run('123', build=True)
+        self.assertEqual(found['id'], 4)
+        self.assertIn('/repos/frankhjwx/FruitsAtelier/actions/workflows/discord-preview.yml/',
+                      github.request.call_args.args[1])
+        await github.run(4, build=True)
+        self.assertEqual(github.request.call_args.args[1], '/repos/frankhjwx/FruitsAtelier/actions/runs/4')
+
+    async def test_edit_completion_tracks_public_build_before_notification(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'STATE_FILE': str(Path(folder)/'state.sqlite3')}):
+            bot = Bot()
+            bot.wait_until_ready = AsyncMock()
+            bot.store.add_job('123', 1, 2, 'codex/discord-111111111111111111', 'Small fix')
+            bot.store.update('123', 'running', 10)
+            github = type('Github', (), {
+                'run': AsyncMock(return_value={'id': 10, 'status': 'completed', 'conclusion': 'success', 'html_url': 'private'}),
+                'find_run': AsyncMock(return_value={'id': 20, 'html_url': 'public'})})()
+            bot.github = github
+            with patch('fa_bot.bot.asyncio.sleep', side_effect=asyncio.CancelledError):
+                with self.assertRaises(asyncio.CancelledError):
+                    await bot.poll_jobs()
+            self.assertEqual(bot.store.job('123')['status'], 'building')
+            self.assertEqual(bot.store.job('123')['run_id'], 20)
+            github.run.return_value = {'id': 20, 'status': 'completed', 'conclusion': 'success', 'html_url': 'public'}
+            channel = type('Channel', (), {'send': AsyncMock()})()
+            with patch.object(bot, 'get_channel', return_value=channel), patch('fa_bot.bot.asyncio.sleep', side_effect=asyncio.CancelledError):
+                with self.assertRaises(asyncio.CancelledError):
+                    await bot.poll_jobs()
+            github.run.assert_awaited_with(20, build=True)
+            self.assertEqual(bot.store.job('123')['status'], 'success')
+            self.assertIn('public', channel.send.call_args.args[0])
+            self.assertNotIn('private', channel.send.call_args.args[0])
+            bot.store.db.close()
+
     async def test_qa_two_rounds_evidence_and_usage(self):
         session = Session()
         text, cost = await answer(session, 'fake', Knowledge(), 'How do anchors work?')
