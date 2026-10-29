@@ -5,6 +5,45 @@ import worker
 
 
 class UsageBudgetTests(unittest.TestCase):
+    def test_opaque_reasoning_does_not_evict_fresh_source(self):
+        from fa_bot.qa import context_bytes
+        history = [{'type':'reasoning','encrypted_content':'x'*150000},
+                   {'type':'function_call','name':'read','call_id':'fresh'},
+                   {'type':'function_call_output','call_id':'fresh','output':'source '*1000}]
+        self.assertLess(context_bytes(history), 10000)
+        self.assertFalse(worker.compact_evidence(history))
+        self.assertEqual(worker.cached_input(history)[0]['encrypted_content'], 'x'*150000)
+        self.assertEqual(history[-1]['output'], 'source '*1000)
+
+    def test_latest_duplicate_keeps_original_evidence(self):
+        history = []
+        for call in ('original','old','fresh'):
+            history.extend([{'type':'function_call','name':'read','call_id':call},
+                            {'type':'function_call_output','call_id':call,'output':call*10000}])
+        history[-1]['output'] = ('Unchanged query result; use the identical evidence '
+                                  'already returned for call original.')
+        self.assertTrue(worker.compact_evidence(history))
+        self.assertEqual(history[1]['output'], 'original'*10000)
+        self.assertIn('omitted', history[3]['output'])
+        self.assertIn('call original.', history[-1]['output'])
+
+    def test_fresh_oversized_batch_is_not_silently_erased(self):
+        history = [{'type':'function_call','name':'read','call_id':'fresh'},
+                   {'type':'function_call_output','call_id':'fresh','output':'x'*110000}]
+        self.assertFalse(worker.compact_evidence(history))
+        self.assertEqual(len(history[-1]['output']), 110000)
+
+    def test_repair_round_preserves_measured_input_reservation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            ws = worker.Workspace(folder)
+            response = {'status':'completed','usage':{'input_tokens':100000,'output_tokens':10},
+                        'output':[{'type':'message','content':[{'type':'output_text','text':'Candidate'}]}]}
+            with patch.object(worker,'request_json',return_value=response) as request:
+                _, cost = worker.generate(ws,'Inspect','fake')
+                with self.assertRaisesRegex(RuntimeError,'budget reached'):
+                    worker.generate(ws,'Continue','fake',used=cost)
+                self.assertEqual(request.call_count, 1)
+
     def test_duplicate_query_keeps_one_full_copy(self):
         with tempfile.TemporaryDirectory() as folder:
             ws=worker.Workspace(folder)
@@ -75,13 +114,14 @@ class UsageBudgetTests(unittest.TestCase):
             calls = [{'type':'function_call','name':'read','call_id':str(i),
                       'arguments':'{"path":"src/Test.cs","start":1}'} for i in range(8)]
             responses = [
-                {'usage':{'input_tokens':100,'output_tokens':100},'output':calls},
+                {'usage':{'input_tokens':100,'output_tokens':100},'output':calls[:4]},
+                {'usage':{'input_tokens':15000,'output_tokens':100},'output':calls[4:]},
                 {'usage':{'input_tokens':10000,'output_tokens':50},'status':'completed',
                  'output':[{'type':'message','content':[{'type':'output_text','text':'Finished.'}]}]}]
             with patch.object(worker,'request_json',side_effect=responses) as request, patch.object(ws,'read',side_effect=[str(i)+'x'*13999 for i in range(8)]):
                 summary, cost = worker.generate(ws,'Inspect the anchor behavior','fake')
             self.assertEqual(summary,'Finished.')
-            self.assertEqual(request.call_count,2)
+            self.assertEqual(request.call_count,3)
             history = request.call_args.args[3]['input']
             outputs = [x for x in history if x.get('type')=='function_call_output']
             self.assertEqual(len(outputs),8)

@@ -95,10 +95,12 @@ def output_text(result):
 
 
 def context_bytes(history):
-    # Base64 pixels have their own payload bound; keep the text/evidence budget separate.
+    # Opaque reasoning and pixels count toward transport size, not readable evidence.
     compact = []
     for item in history:
         item = dict(item)
+        if item.get('type') == 'reasoning':
+            item.pop('encrypted_content', None)
         if isinstance(item.get('content'), list):
             item['content'] = [p if p.get('type') != 'input_image' else {'type': 'input_image'} for p in item['content']]
         compact.append(item)

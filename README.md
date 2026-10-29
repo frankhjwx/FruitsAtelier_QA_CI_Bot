@@ -130,6 +130,11 @@ billing controls and do not include manually dispatched workflows or other apps.
 
 The development worker supports scoped literal search with pagination, bounded line-range
 reads and persistent working notes to reduce repeated queries after context compaction.
+The evidence limit excludes opaque encrypted reasoning, which remains in requests and
+under the separate transport limit. Compaction removes only older query bodies, preserving
+the latest tool batch and any original evidence referenced by its duplicate results.
+Input reservations carry API-reported token usage across repair rounds and include new
+messages and tool results; compaction does not reset the task's budget estimate.
 Before generation, the harness builds a bounded context pack from likely implementation
 symbols, related tests and API signatures. Repair rounds receive the current patch,
 private regression and deduplicated failing diagnostics rather than the earlier exploration

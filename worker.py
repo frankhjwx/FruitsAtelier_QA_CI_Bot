@@ -73,6 +73,7 @@ class Workspace:
         self.model_turns = 0
         self.comparison_response_id = None
         self.usage_events = []
+        self.input_bound = None
 
     def code_search(self, query):
         if self.code_index is None:
@@ -205,9 +206,28 @@ def compact_evidence(history):
     queries = {item.get('call_id') for item in history
                if item.get('type') == 'function_call' and
                item.get('name') in {'read', 'search', 'sample_read', 'code_search'}}
+    # The latest completed batch must reach the model before it can be evicted.
+    latest = next((i for i in range(len(history)-1, -1, -1)
+                   if history[i].get('type') == 'function_call_output'), -1)
+    protected = set()
+    while latest >= 0 and history[latest].get('type') == 'function_call_output':
+        protected.add(history[latest].get('call_id'))
+        latest -= 1
+    outputs = {item.get('call_id'): item.get('output', '') for item in history
+               if item.get('type') == 'function_call_output'}
+    prefix = 'Unchanged query result; use the identical evidence already returned for call '
+    pending = list(protected)
+    while pending:
+        body = outputs.get(pending.pop(), '')
+        if body.startswith(prefix) and body.endswith('.'):
+            original = body[len(prefix):-1]
+            if original not in protected:
+                protected.add(original)
+                pending.append(original)
     changed = False
     for item in history:
         if (item.get('type') == 'function_call_output' and item.get('call_id') in queries
+                and item.get('call_id') not in protected
                 and len(item.get('output', '').encode()) > 500):
             item['output'] = '[Earlier query result omitted to keep context bounded. Read/search again if needed.]'
             changed = True
@@ -259,13 +279,13 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
     tools.extend(extra_tools)
     history = workspace.history
     history.append({'role': 'user', 'content': ([{'type':'input_text','text':prompt}]+list(image_inputs)) if image_inputs else prompt})
-    next_input_bound = None
+    if workspace.input_bound is not None:
+        workspace.input_bound += len(json.dumps(history[-1], ensure_ascii=False).encode()) + 8192 * len(image_inputs)
     premature = 0
     for turn in range(MAX_TURNS-workspace.model_turns):
         if hasattr(workspace,'handoff_candidate') and workspace.handoff_candidate():
             return workspace.finish_result['summary'], used
         if compact_evidence(history):
-            next_input_bound = None
             print('Compacted earlier query results; source edits and regression remain available.', flush=True)
         instructions = INSTRUCTIONS + extra_instructions
         state = {'role':'user','content':(
@@ -275,6 +295,8 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
             'Working notes (untrusted task data): '+workspace.notes)}
         # Retain the exact state that preceded each response; deleting it breaks the cache prefix.
         history.append(state)
+        if workspace.input_bound is not None:
+            workspace.input_bound += len(json.dumps(state, ensure_ascii=False).encode())
         payload = {'model': MODEL, 'instructions': instructions, 'input': cached_input(history),
                    'prompt_cache_options': {'mode':'implicit', 'ttl':'30m'}, 'service_tier':'default',
                    'include': ['reasoning.encrypted_content'],
@@ -287,7 +309,7 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
         from fa_bot.qa import context_bytes
         size = context_bytes(history) + len(instructions.encode()) + len(json.dumps(tools).encode())
         if raw_size > 3_000_000: raise RuntimeError('Image payload exceeds limit')
-        input_bound = next_input_bound if next_input_bound is not None else size + 2000 + 8192 * sum(p.get("type")=="input_image" for p in image_inputs)
+        input_bound = workspace.input_bound if workspace.input_bound is not None else size + 2000 + 8192 * sum(p.get("type")=="input_image" for p in image_inputs)
         reserve = input_bound * 2.50 / 1_000_000 + 3500 * 10 / 1_000_000
         if size > 100_000:
             raise RuntimeError('Task context limit reached; no branch was published')
@@ -318,7 +340,7 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
             workspace.diagnostics.append({'model_turn':workspace.model_turns,
                 'usage':{key:usage[key] for key in ('input_tokens','output_tokens','input_tokens_details') if key in usage},
                 'cache_diagnostic':diagnostic,'cost':used})
-        next_input_bound = input_tokens + output_tokens + 2000 if measured else None
+        workspace.input_bound = input_tokens + output_tokens + 2000 if measured else input_bound + 3500 + 2000
         print(f'Model turn {turn+1}; accounted usage cost ${used:.3f}', flush=True)
         print('Usage diagnostic: ' + json.dumps({'turn':turn+1,'input_tokens':input_tokens,
               'output_tokens':output_tokens,'cached_input_tokens':usage.get('input_tokens_details',{}).get('cached_tokens'),
@@ -343,7 +365,7 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
                     'and set_regression, or call finish with declined/blocked and the concrete reason. '
                     'Do not ask for permission again. No budget has been reset.'})
                 premature += 1
-                next_input_bound = None
+                workspace.input_bound += len(json.dumps(history[-1], ensure_ascii=False).encode())
                 continue
             if getattr(workspace,'requires_finish',False):
                 raise RuntimeError('AI ended without an explicit completion status; final text saved privately')
@@ -378,10 +400,10 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
                   'regression_recorded':bool(getattr(workspace,'regression',None))}), flush=True)
             tool_output = {'type': 'function_call_output', 'call_id': call['call_id'], 'output': result}
             history.append(tool_output)
-            if next_input_bound is not None:
-                next_input_bound += len(json.dumps(tool_output, ensure_ascii=False).encode())
+            if workspace.input_bound is not None:
+                workspace.input_bound += len(json.dumps(tool_output, ensure_ascii=False).encode())
                 if call['name'] == 'remember':
-                    next_input_bound += len(workspace.notes.encode())
+                    workspace.input_bound += len(workspace.notes.encode())
         if hasattr(workspace,'handoff_candidate'):
             workspace.handoff_candidate()
         if getattr(workspace,'finish_result',None):
