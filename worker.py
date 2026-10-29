@@ -155,10 +155,11 @@ def generate(workspace, prompt, api_key):
             if not summary:
                 raise RuntimeError('Model produced no completion summary')
             return summary[:6000], used
-        if len(calls) > 12:
-            raise RuntimeError('Tool call limit exceeded')
-        for call in calls:
+        print(f'Tool calls requested: {len(calls)}; processing at most 12 this turn', flush=True)
+        for index, call in enumerate(calls):
             try:
+                if index >= 12:
+                    raise ValueError('Tool batch capacity reached; retry this operation in the next turn')
                 args = json.loads(call['arguments'])
                 if call['name'] not in ('read', 'search', 'replace'):
                     raise ValueError('Unknown tool')

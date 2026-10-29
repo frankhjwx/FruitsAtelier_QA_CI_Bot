@@ -25,3 +25,21 @@ class UsageBudgetTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError,'budget reached'):
                     worker.generate(ws,'Inspect theme behavior','fake')
             self.assertEqual(request.call_count,1)
+
+
+    def test_large_tool_batch_returns_results_and_defers_excess(self):
+        with tempfile.TemporaryDirectory() as folder:
+            ws=worker.Workspace(folder)
+            calls=[{'type':'function_call','name':'search','call_id':str(i),
+                    'arguments':'{"query":"theme"}'} for i in range(13)]
+            responses=[{'usage':{'input_tokens':100,'output_tokens':100},'output':calls},
+                       {'usage':{'input_tokens':400,'output_tokens':50},'status':'completed',
+                        'output':[{'type':'message','content':[{'type':'output_text','text':'Finished.'}]}]}]
+            with patch.object(worker,'request_json',side_effect=responses) as request, patch.object(ws,'search',return_value='Result') as search:
+                summary,cost=worker.generate(ws,'Inspect themes','fake')
+            self.assertEqual(summary,'Finished.')
+            self.assertEqual(search.call_count,12)
+            history=request.call_args.args[3]['input']
+            outputs=[x for x in history if x.get('type')=='function_call_output']
+            self.assertEqual(len(outputs),13)
+            self.assertIn('retry this operation',outputs[-1]['output'])
