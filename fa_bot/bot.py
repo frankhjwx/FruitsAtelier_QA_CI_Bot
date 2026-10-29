@@ -174,8 +174,10 @@ class Bot(discord.Client):
         if not self.eligible(interaction.user.id, interaction.guild_id):
             raise ValueError('This server is not enabled.')
         self.admit(interaction.user.id, "dev")
-        if not 10 <= len(request) <= 3500:
-            raise ValueError('Please describe the request in 10–3500 characters.')
+        request = request.strip()
+        minimum = 1 if previous else 10
+        if not minimum <= len(request) <= 3500:
+            raise ValueError(f'Please describe the request in {minimum}-3500 characters.')
         if self.store.repair_active():
             raise ValueError('A repair or PR is already running; please wait for its package or maintainer review.')
         if self.store.recent_jobs(interaction.user.id) >= 5:

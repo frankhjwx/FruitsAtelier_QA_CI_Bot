@@ -145,12 +145,12 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
                     await bot.start_job(interaction, 'Add a small clarification', 'old')
                 bot.github.dispatch.assert_not_awaited()
                 bot.cooldowns.clear()
-                result = await bot.start_job(interaction, 'Add a small clarification', 'latest')
+                result = await bot.start_job(interaction, '  Retry  ', 'latest')
                 self.assertIn('accepted', result)
                 args = bot.github.dispatch.call_args.args
                 self.assertEqual(args[2], 'codex-discord-bug-fix')
                 self.assertIn('Original request', args[1])
-                self.assertIn('Add a small clarification', args[1])
+                self.assertIn('Follow-up:\nRetry', args[1])
             finally:
                 bot.store.db.close()
 
