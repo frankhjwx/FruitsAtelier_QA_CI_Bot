@@ -41,13 +41,23 @@ public static class Entry {
 '''
 
 
+def diagnostic_output(raw):
+    text=raw.decode('utf-8',errors='replace')
+    lines=text.splitlines(); selected=[]
+    for index,line in enumerate(lines):
+        if line.startswith('FAIL ') or ': error ' in line or 'Unhandled exception' in line:
+            selected.extend(lines[max(0,index-1):index+5])
+    failures='\n'.join(selected)[:8000]
+    return (failures+'\n[Log tail]\n'+text[-6000:]) if failures else text[-14000:]
+
+
 def run(command,cwd,deadline,env=None):
     remaining=min(900,deadline-time.time())
     if remaining<=0: raise TimeoutError('Validation deadline reached')
     env = dict(os.environ) if env is None else dict(env)
     env = {k:v for k,v in env.items() if not k.startswith(('TRANSFER_', 'GITHUB_', 'ACTIONS_'))}
     result=subprocess.run(command,cwd=cwd,env=env,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=remaining)
-    return {'exit':result.returncode,'output':result.stdout.decode('utf-8',errors='replace')[-14000:]}
+    return {'exit':result.returncode,'output':diagnostic_output(result.stdout)}
 
 
 def apply_changes(root,changes):

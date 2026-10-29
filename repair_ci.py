@@ -86,7 +86,7 @@ def wait_validation(key,attempt,sha,token,test_token,acceptance=False):
 def failure_feedback(results):
     def compact(value):
         if isinstance(value,dict):
-            return {k:(v[-10000:] if k=='output' else compact(v)) for k,v in value.items()
+            return {k:(v[:14000] if k=='output' else compact(v)) for k,v in value.items()
                     if k!='output' or value.get('exit',1)!=0}
         if isinstance(value,list): return [compact(v) for v in value]
         return value

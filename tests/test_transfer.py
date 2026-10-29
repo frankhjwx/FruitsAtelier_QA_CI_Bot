@@ -78,3 +78,11 @@ class DispatchResponseTests(unittest.TestCase):
         response.__enter__.return_value=response
         with patch.object(worker.urllib.request,'urlopen',return_value=response):
             self.assertIsNone(worker.request_json('https://api.github.com/example','fake','POST',{}))
+
+
+class DiagnosticTests(unittest.TestCase):
+    def test_early_failure_is_not_lost_in_successful_log_tail(self):
+        from validate_private import diagnostic_output
+        output=diagnostic_output(b'FAIL original sample assertion\n' + b'PASS unrelated check\n'*2000)
+        self.assertIn('FAIL original sample assertion',output)
+        self.assertLess(len(output),14500)
