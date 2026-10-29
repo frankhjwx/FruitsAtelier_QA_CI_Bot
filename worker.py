@@ -46,7 +46,7 @@ def request_json(url, token, method='GET', data=None):
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=90) as response:
-            return json.load(response)
+            return None if response.status == 204 else json.load(response)
     except urllib.error.HTTPError as error:
         raise RuntimeError(f'Remote request failed with HTTP {error.code}') from None
 

@@ -68,3 +68,13 @@ class VerificationTests(unittest.TestCase):
         mentions=payload['allowed_mentions'].to_dict()
         self.assertEqual(mentions['users'],[123])
         self.assertNotIn('everyone',mentions['parse'])
+
+
+class DispatchResponseTests(unittest.TestCase):
+    def test_no_content_dispatch_response_is_success(self):
+        import worker
+        from unittest.mock import MagicMock
+        response=MagicMock(); response.status=204
+        response.__enter__.return_value=response
+        with patch.object(worker.urllib.request,'urlopen',return_value=response):
+            self.assertIsNone(worker.request_json('https://api.github.com/example','fake','POST',{}))
