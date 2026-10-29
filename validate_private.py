@@ -62,7 +62,7 @@ def run(command,cwd,deadline,env=None):
 
 
 def apply_changes(root,changes):
-    if not 1<=len(changes)<=8: raise ValueError('Invalid change count')
+    if not 1<=len(changes)<=8+len(LOCALIZATION_FILES) or len(set(changes)-LOCALIZATION_FILES)>8: raise ValueError('Invalid change count')
     for name,body in changes.items():
         path=Path(name)
         if path.is_absolute() or '..' in path.parts or '\\' in name or path.parts[0] not in {'src','tests','docs','macOS'} or (path.suffix not in {'.cs','.md','.resx'} and name not in LOCALIZATION_FILES) or name.endswith('AGENTS.md'):

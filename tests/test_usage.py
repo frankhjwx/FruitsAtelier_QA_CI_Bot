@@ -174,3 +174,26 @@ class UsageBudgetTests(unittest.TestCase):
             outputs=[x for x in history if x.get('type')=='function_call_output']
             self.assertEqual(len(outputs),13)
             self.assertIn('retry this operation',outputs[-1]['output'][0]['text'])
+
+
+class DiscoveryCheckpointTests(unittest.TestCase):
+    def test_read_only_discovery_records_plan_before_more_queries(self):
+        with tempfile.TemporaryDirectory() as folder:
+            ws=worker.Workspace(folder)
+            ws.requires_finish=True
+            def finish(status, summary):
+                ws.finish_result={'status':status,'summary':summary}
+                return summary
+            ws.finish=finish
+            responses=[{'usage':{'input_tokens':100,'output_tokens':10},'output':[
+                {'type':'function_call','name':'search','call_id':str(i),'arguments':'{"query":"symbol"}'}]} for i in range(4)]
+            responses += [
+                {'usage':{'input_tokens':100,'output_tokens':10},'output':[{'type':'function_call','name':'remember','call_id':'plan','arguments':'{"notes":"Confirmed owner; missing essential API"}'}]},
+                {'usage':{'input_tokens':100,'output_tokens':10},'output':[{'type':'function_call','name':'finish','call_id':'done','arguments':'{"status":"blocked","summary":"Missing essential API"}'}]}]
+            with patch.object(worker,'request_json',side_effect=responses) as request, patch.object(ws,'search',return_value='Known symbol'):
+                summary,cost=worker.generate(ws,'Small change','fake',extra_tools=[worker.tool('finish',{'status':{'type':'string'},'summary':{'type':'string'}})])
+            checkpoint=request.call_args_list[4].args[3]
+            self.assertEqual(checkpoint['tool_choice'],{'type':'function','name':'remember'})
+            self.assertIn('concrete implementation plan',checkpoint['input'][-1]['content'][0]['text'])
+            self.assertIn('Confirmed owner',ws.notes)
+            self.assertEqual(summary,'Missing essential API')

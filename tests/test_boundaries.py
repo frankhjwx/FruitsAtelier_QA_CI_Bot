@@ -55,6 +55,12 @@ class WorkspaceTests(unittest.TestCase):
                 ws.replace(name,'','{"label":"Measurement"}')
                 apply_changes(Path(folder),{name:'{"label":"Updated"}'})
                 self.assertIn('Updated',ws.path(name).read_text())
+            ws.replace('src/Feature.cs','','class Feature {}')
+            changes={name:ws.path(name).read_text() for name in ws.changed}
+            apply_changes(Path(folder),changes)
+            self.assertEqual(len(changes),14)
+            with self.assertRaises(ValueError):
+                apply_changes(Path(folder),{f'src/T{i}.cs':'class Test {}' for i in range(9)})
             for name in ('src/config.json','src/FruitsAtelier.Core/Localization/other.json',
                          'src/FruitsAtelier.Core/Localization/../config.json'):
                 with self.subTest(name=name):

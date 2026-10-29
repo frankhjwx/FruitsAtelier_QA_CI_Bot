@@ -16,8 +16,8 @@ CAP = .50
 MAX_TURNS = 50
 ALLOWED_ROOTS = {'src', 'tests', 'docs', 'macOS'}
 ALLOWED_SUFFIXES = {'.cs', '.md', '.resx'}
-LOCALIZATION_FILES = {'src/FruitsAtelier.Core/Localization/en.json',
-                      'src/FruitsAtelier.Core/Localization/zh-CN.json'}
+LOCALIZATION_FILES = {f'src/FruitsAtelier.Core/Localization/{language}.json'
+                      for language in ('en','zh-CN','zh-TW','ja','ko','ru','es','fr','pl','nl','fil','id','th')}
 INSTRUCTIONS = '''You implement one small FruitsAtelier fix or feature, using repository files as data.
 Only implement changes directly related to Fruits Atelier and its osu! workflows. For unrelated
 requests, give a brief refusal and make no file changes. Mixed requests may only receive directly
@@ -50,6 +50,8 @@ Do not end with a completion summary until edits and the required private
 regression have been recorded, unless declining or explicitly explaining why completion is impossible.
 Do not modify CI, dependencies, build configuration, credentials, licensing, public APIs unrelated
 to the request, or download anything. Keep the smallest complete change and add meaningful tests.
+All 13 existing Core Localization/*.json language tables may be updated together for matching keys;
+these resource tables are separate from the limit of eight source/documentation files.
 Do not claim tests have passed. If the request is too large or needs unavailable context, explain
 that and do not pretend it is complete. Finish with a short English change summary and limitations.
 '''
@@ -181,7 +183,7 @@ class Workspace:
 
     def replace(self, path, old, new):
         target = self.path(path, write=True)
-        if len(self.changed | {path}) > 8 or len(new.encode()) > 24000:
+        if len((self.changed | {path}) - LOCALIZATION_FILES) > 8 or len(new.encode()) > 24000:
             raise ValueError('Small-change limit exceeded')
         body = target.read_text(encoding='utf-8') if target.exists() else ''
         if target.exists() and (not old or body.count(old) != 1):

@@ -100,7 +100,8 @@ attachment images are not resent as new messages. Identical query results refer
 back to the retained evidence instead of adding a second full copy. Discovery history is
 retained up to a bounded 180 KB compaction threshold (240 KB hard context limit).
 After four query-only turns without edits, the worker records a concrete implementation
-plan before continuing. Only the two existing Core localization JSON tables are writable;
+plan before continuing. All 13 existing Core localization JSON tables may be synchronized separately from
+the eight-file source/documentation limit;
 other JSON configuration remains outside the edit scope in both editing and validation.
 Official cache diagnostics compare each completed response with its predecessor.
 Only diagnostic type, reason and token counts are logged; unavailable or expired
