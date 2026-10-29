@@ -184,10 +184,17 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
         evidence = []
         queries = []
         seen = set()
+        read_count = 0
         result = await call(tool_choice={'type': 'function', 'name': 'search_evidence'})
         for round_number in range(8):
             calls = [x for x in result.get('output', []) if x.get('type') == 'function_call']
             if not calls:
+                draft = json.loads(output_text(result) or '{}')
+                if draft.get('change_request') and read_count == 0 and round_number < 6:
+                    history.extend(result['output'])
+                    history.append({'role':'user','content':'Localization is incomplete. Read the owning implementation file from the evidence now, using read_evidence. Then identify the specific existing members and relevant regression surface in investigation_direction. Select implementation source labels, not just the backlog.'})
+                    result = await call(tool_choice={'type':'function','name':'read_evidence'})
+                    continue
                 break
             if len(calls) != 1 or calls[0]['name'] not in {'search_evidence','read_evidence'}:
                 raise RuntimeError('Evidence lookup did not complete')
@@ -201,6 +208,8 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
                 found = []
             elif calls[0]['name'] == 'read_evidence':
                 found = knowledge.read_evidence(str(args['path'])[:240], args['start'])
+                if found and str(args['path']).endswith('.cs'):
+                    read_count += 1
             else:
                 found = knowledge.search(query, prefix=prefix) if prefix else knowledge.search(query)
             seen.add(signature)
@@ -235,7 +244,7 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
         localization = locator(' '.join(dict.fromkeys(queries)), data.get('investigation_direction', ''),
                                data.get('code_sources', []), evidence, knowledge.sha) if change else None
         logging.getLogger('fa_bot.qa').info('QA decision: change=%s selected=%s localization=%s', bool(change), data.get('code_sources'), localization)
-        if change and not ready(localization):
+        if change and (not ready(localization) or read_count == 0):
             return QAReply(data['answer'][:1550] + '\n\nCI has not started: relevant implementation code could not be located.'), cost
         return QAReply(data['answer'][:1850], change.strip() if change else None,
                        localization=localization), cost

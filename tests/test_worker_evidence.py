@@ -39,5 +39,5 @@ class WorkerEvidenceTests(unittest.TestCase):
             for i in range(8):
                 history.extend([{'type':'function_call','name':'read','call_id':str(i)},
                                 {'type':'function_call_output','call_id':str(i),'output':'x'*14000}])
-            self.assertTrue(worker.compact_evidence(history))
+            self.assertTrue(worker.compact_evidence(history, threshold=70000, target=50000))
             self.assertIn('endpoint swapping',workspace.notes)

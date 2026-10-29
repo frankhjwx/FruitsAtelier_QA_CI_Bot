@@ -40,7 +40,9 @@ scope and result pagination. Locate symbols before reading their surrounding cod
 queries in one response. Prefer code_search first: it returns ranked methods, types and documentation
 with source locations from the current checkout, including edits. Use exact search for callers.
 Use remember to retain concise findings, relevant paths/line ranges and
-remaining work before older query results are compacted. No shell or execution tools exist.
+remaining work before older query results are compacted.
+When QA localization is supplied, inspect those files first. Once the owning state, display and
+regression surface are known, implement the smallest candidate; do not inventory unrelated APIs. No shell or execution tools exist.
 CI tests after you finish; absence of local execution tools is expected and is not a reason to stop.
 Do not end with a completion summary until edits and the required private
 regression have been recorded, unless declining or explicitly explaining why completion is impossible.
@@ -74,6 +76,8 @@ class Workspace:
         self.comparison_response_id = None
         self.usage_events = []
         self.input_bound = None
+        self.discovery_turns = 0
+        self.discovery_checkpoint = False
 
     def code_search(self, query):
         if self.code_index is None:
@@ -199,9 +203,9 @@ def tool(name, properties):
                                           'required': list(properties), 'additionalProperties': False}}
 
 
-def compact_evidence(history):
+def compact_evidence(history, threshold=180000, target=120000):
     from fa_bot.qa import context_bytes
-    if context_bytes(history) <= 70000:
+    if context_bytes(history) <= threshold:
         return False
     queries = {item.get('call_id') for item in history
                if item.get('type') == 'function_call' and
@@ -231,7 +235,7 @@ def compact_evidence(history):
                 and len(item.get('output', '').encode()) > 500):
             item['output'] = '[Earlier query result omitted to keep context bounded. Read/search again if needed.]'
             changed = True
-            if context_bytes(history) <= 50000:
+            if context_bytes(history) <= target:
                 break
     return changed
 
@@ -302,6 +306,15 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
                    'include': ['reasoning.encrypted_content'],
                    'tools': tools, 'store': False, 'reasoning': {'effort': 'low', 'context':'all_turns'},
                    'max_output_tokens': 3500}
+        checkpoint = (getattr(workspace,'requires_finish',False) and not workspace.changed
+                      and workspace.discovery_turns >= 4 and not workspace.discovery_checkpoint)
+        if checkpoint:
+            payload['tool_choice'] = {'type':'function','name':'remember'}
+            history.append({'role':'user','content':'Before more exploration, save a concrete implementation plan with remember: confirmed owning files/members, exact proposed change, regression entry point, and only the essential unresolved question. Use the evidence already read; implement next if sufficient.'})
+            payload['input'] = cached_input(history)
+            workspace.discovery_checkpoint = True
+        if checkpoint and workspace.input_bound is not None:
+            workspace.input_bound += len(json.dumps(history[-1], ensure_ascii=False).encode())
         if workspace.comparison_response_id:
             payload['prompt_cache_options']['comparison_response_id'] = workspace.comparison_response_id
         # UTF-8 bytes bound text tokens conservatively. Include cache-write surcharge and margin.
@@ -311,7 +324,7 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
         if raw_size > 3_000_000: raise RuntimeError('Image payload exceeds limit')
         input_bound = workspace.input_bound if workspace.input_bound is not None else size + 2000 + 8192 * sum(p.get("type")=="input_image" for p in image_inputs)
         reserve = input_bound * 2.50 / 1_000_000 + 3500 * 10 / 1_000_000
-        if size > 100_000:
+        if size > 240_000:
             raise RuntimeError('Task context limit reached; no branch was published')
         if used + reserve > CAP:
             raise RuntimeError('Task budget reached before completion; no branch was published')
@@ -372,6 +385,8 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
             if not summary:
                 raise RuntimeError('Model produced no completion summary')
             return summary[:6000], used
+        if calls and all(call['name'] in {'read','search','code_search','sample_list','sample_read'} for call in calls):
+            workspace.discovery_turns += 1
         print(f'Tool calls requested: {len(calls)}; processing at most 12 this turn', flush=True)
         for index, call in enumerate(calls):
             args = {}

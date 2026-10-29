@@ -232,7 +232,7 @@ class WorkerTests(unittest.TestCase):
     def test_oversized_prompt_cannot_start_billable_call(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(worker, 'request_json') as request:
             with self.assertRaisesRegex(RuntimeError, 'context limit'):
-                worker.generate(worker.Workspace(folder), 'x' * 200000, 'fake')
+                worker.generate(worker.Workspace(folder), 'x' * 300000, 'fake')
             request.assert_not_called()
 
 

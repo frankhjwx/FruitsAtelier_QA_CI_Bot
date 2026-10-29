@@ -20,10 +20,14 @@ class LocalizationTests(unittest.IsolatedAsyncioTestCase):
             def search(self, query):
                 self.query = query
                 return [{'source':source, 'url':f'https://github.com/frankhjwx/FruitsAtelier/blob/{self.sha}/src/Test.cs#L3', 'text':'selection source'}]
+            def read_evidence(self, path, start): return self.search('slider anchors')
         class QA(Session):
             def post(self, url, **kwargs):
                 if not self.calls:
                     return super().post(url, **kwargs)
+                if kwargs['json'].get('tool_choice') == {'type':'function','name':'read_evidence'}:
+                    self.calls.append(kwargs['json'])
+                    return Response({'usage':{'input_tokens':100,'output_tokens':30},'output':[{'type':'function_call','name':'read_evidence','call_id':'read','arguments':json.dumps({'path':'src/Test.cs','start':3})}]})
                 self.calls.append(kwargs['json'])
                 return Response({'usage':{'input_tokens':100,'output_tokens':30}, 'output':[
                     {'type':'message','content':[{'type':'output_text','text':json.dumps({
@@ -80,10 +84,13 @@ class PreflightTests(unittest.IsolatedAsyncioTestCase):
             def search(self, query, prefix=''):
                 path = 'src/Selection.cs' if query == 'selection' else 'tests/SelectionTests.cs'
                 return [{'source':path, 'url':f'https://github.com/frankhjwx/FruitsAtelier/blob/{self.sha}/{path}#L1', 'text':query}]
+            def read_evidence(self, path, start): return self.search('selection')
         class Multi(Session):
             def post(self, url, **kwargs):
                 self.calls.append(kwargs['json'])
                 n = len(self.calls)
+                if kwargs['json'].get('tool_choice') == {'type':'function','name':'read_evidence'}:
+                    return Response({'usage':{'input_tokens':100,'output_tokens':30},'output':[{'type':'function_call','name':'read_evidence','call_id':'read','arguments':json.dumps({'path':'src/Selection.cs','start':1})}]})
                 output = ([{'type':'function_call', 'name':'search_evidence', 'call_id':str(n),
                             'arguments':json.dumps({'query':'selection' if n == 1 else 'timestamp', 'prefix':'' if n == 1 else 'tests/'})}]
                           if n < 3 else [{'type':'message', 'content':[{'type':'output_text','text':json.dumps({
@@ -93,7 +100,7 @@ class PreflightTests(unittest.IsolatedAsyncioTestCase):
         session=Multi()
         reply,cost=await answer(session,'fake',Knowledge(),'Display selected timestamps')
         self.assertEqual(len(reply.localization['locations']),2)
-        self.assertEqual(len(session.calls),3)
+        self.assertEqual(len(session.calls),5)
         self.assertEqual(session.calls[2]['input'][:len(session.calls[1]['input'])],session.calls[1]['input'])
         self.assertEqual(session.calls[0]['tools'],session.calls[2]['tools'])
 

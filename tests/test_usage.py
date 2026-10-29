@@ -22,7 +22,7 @@ class UsageBudgetTests(unittest.TestCase):
                             {'type':'function_call_output','call_id':call,'output':call*10000}])
         history[-1]['output'] = ('Unchanged query result; use the identical evidence '
                                   'already returned for call original.')
-        self.assertTrue(worker.compact_evidence(history))
+        self.assertTrue(worker.compact_evidence(history, threshold=70000, target=50000))
         self.assertEqual(history[1]['output'], 'original'*10000)
         self.assertIn('omitted', history[3]['output'])
         self.assertIn('call original.', history[-1]['output'])
@@ -108,7 +108,7 @@ class UsageBudgetTests(unittest.TestCase):
             self.assertEqual(request.call_args.args[3]['reasoning']['context'],'all_turns')
             self.assertLess(cost,worker.CAP)
 
-    def test_large_read_batch_is_compacted_before_next_model_call(self):
+    def test_large_read_batch_retains_cache_prefix_within_bound(self):
         with tempfile.TemporaryDirectory() as folder:
             ws = worker.Workspace(folder)
             calls = [{'type':'function_call','name':'read','call_id':str(i),
@@ -125,7 +125,7 @@ class UsageBudgetTests(unittest.TestCase):
             history = request.call_args.args[3]['input']
             outputs = [x for x in history if x.get('type')=='function_call_output']
             self.assertEqual(len(outputs),8)
-            self.assertIn('omitted',outputs[0]['output'][0]['text'])
+            self.assertEqual(outputs[0]['output'][0]['text'],'0'+'x'*13999)
             self.assertEqual(outputs[-1]['output'][0]['text'],'7'+'x'*13999)
             self.assertLess(cost,worker.CAP)
 
