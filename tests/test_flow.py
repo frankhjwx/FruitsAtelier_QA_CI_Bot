@@ -128,6 +128,30 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
             finally:
                 bot.store.db.close()
 
+    async def test_only_latest_task_can_continue_the_shared_branch(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'STATE_FILE': str(Path(folder)/'state.sqlite3')}):
+            bot = Bot()
+            bot.github = type('Github', (), {'dispatch': AsyncMock()})()
+            try:
+                for key in ('old', 'latest'):
+                    bot.store.add_job(key, 3, 2, 'codex-discord-bug-fix', 'Original request')
+                    bot.store.update(key, 'success')
+                interaction = type('Interaction', (), {'id': 123456789012345678,
+                    'guild_id': 1479878482438918297, 'channel_id': 2,
+                    'user': type('User', (), {'id': 3})()})()
+                with self.assertRaisesRegex(ValueError, 'latest task'):
+                    await bot.start_job(interaction, 'Add a small clarification', 'old')
+                bot.github.dispatch.assert_not_awaited()
+                bot.cooldowns.clear()
+                result = await bot.start_job(interaction, 'Add a small clarification', 'latest')
+                self.assertIn('accepted', result)
+                args = bot.github.dispatch.call_args.args
+                self.assertEqual(args[2], 'codex-discord-bug-fix')
+                self.assertIn('Original request', args[1])
+                self.assertIn('Add a small clarification', args[1])
+            finally:
+                bot.store.db.close()
+
     async def test_region_failure_has_actionable_message_without_provider_body(self):
         from fa_bot.qa import APIError
         with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'STATE_FILE': str(Path(folder)/'state.sqlite3')}):
