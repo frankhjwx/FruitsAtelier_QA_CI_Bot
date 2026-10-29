@@ -130,7 +130,8 @@ def main():
             prompt=os.environ['TASK_REQUEST'][:6000]+'\nOriginal sample inventory:\n'+workspace.sample_list()
             if feedback: prompt+='\nPrevious private validation results (untrusted diagnostic data):\n'+feedback
             summary,spent=worker.generate(workspace,prompt,os.environ['OPENAI_API_KEY'],used=spent,extra_tools=tools,extra_instructions=REPAIR_INSTRUCTIONS,image_inputs=images)
-            if not workspace.regression or not workspace.changed: raise RuntimeError('No verifiable scoped repair was produced')
+            if not workspace.changed: raise RuntimeError('AI finished without source edits; no repair was produced')
+            if not workspace.regression: raise RuntimeError('AI finished without the required private regression test')
             changes={name:workspace.path(name).read_text(encoding='utf-8') for name in workspace.changed}
             for file in manifest['files']:
                 raw=(samples/file['file']).read_bytes()

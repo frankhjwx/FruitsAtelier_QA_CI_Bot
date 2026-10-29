@@ -101,6 +101,10 @@ testing and packaging. An uncertain dispatch retains the repair slot until a
 maintainer reconciles the GitHub run. These application limits are not a replacement for account
 billing controls and do not include manually dispatched workflows or other apps.
 
+The development worker supports scoped literal search with pagination, bounded line-range
+reads and persistent working notes to reduce repeated queries after context compaction.
+Private CI logs record tool names, argument hashes, result sizes and error types,
+without tool bodies or original attachment contents.
 The development worker can search/read repository text and replace exact text
 in up to eight C#, Markdown or RESX files under source, tests, docs and macOS.
 It cannot edit workflow/build configuration, dependencies or its own controller.
