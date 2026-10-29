@@ -84,6 +84,11 @@ download or extract them.
 QA uses `gpt-6-luna`; development uses `gpt-6.1-sol`. Standard processing is used.
 The current price assumptions are $0.10/$0.50 and $2/$10 per million input/output
 tokens respectively. Conservative reservations include a cache-write margin.
+The development worker preserves controller messages in the conversation prefix,
+marks reusable message boundaries, and retains reasoning across turns for cache
+reuse. Usage diagnostics include cached reads and cache writes by lifetime.
+The budget guard still charges conservative token rates without assuming a cache
+hit; reported budget cost is not the final API invoice.
 See the [official model pages](https://developers.openai.com/api/docs/models).
 
 The durable UTC-calendar-month ledger limits automatic QA to $10 and development

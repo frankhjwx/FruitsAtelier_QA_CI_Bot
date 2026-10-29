@@ -17,8 +17,13 @@ class UsageBudgetTests(unittest.TestCase):
                 summary, cost = worker.generate(ws,'Inspect anchor behavior','fake')
             self.assertEqual(summary,'Finished.')
             self.assertEqual(request.call_count,13)
-            self.assertIn('38 model turns remain', request.call_args.args[3]['input'][-1]['content'])
+            self.assertIn('38 model turns remain', request.call_args.args[3]['input'][-1]['content'][0]['text'])
             self.assertEqual(request.call_args_list[0].args[3]['instructions'],request.call_args.args[3]['instructions'])
+            first=request.call_args_list[0].args[3]['input']
+            second=request.call_args_list[1].args[3]['input']
+            self.assertEqual(first,second[:len(first)])
+            self.assertEqual(first[-1]['content'][0]['prompt_cache_breakpoint'],{'mode':'explicit'})
+            self.assertEqual(request.call_args.args[3]['reasoning']['context'],'all_turns')
             self.assertLess(cost,worker.CAP)
 
     def test_large_read_batch_is_compacted_before_next_model_call(self):
@@ -37,8 +42,8 @@ class UsageBudgetTests(unittest.TestCase):
             history = request.call_args.args[3]['input']
             outputs = [x for x in history if x.get('type')=='function_call_output']
             self.assertEqual(len(outputs),8)
-            self.assertIn('omitted',outputs[0]['output'])
-            self.assertEqual(outputs[-1]['output'],'x'*14000)
+            self.assertIn('omitted',outputs[0]['output'][0]['text'])
+            self.assertEqual(outputs[-1]['output'][0]['text'],'x'*14000)
             self.assertLess(cost,worker.CAP)
 
     def test_measured_usage_releases_unused_reservation(self):
@@ -85,4 +90,4 @@ class UsageBudgetTests(unittest.TestCase):
             history=request.call_args.args[3]['input']
             outputs=[x for x in history if x.get('type')=='function_call_output']
             self.assertEqual(len(outputs),13)
-            self.assertIn('retry this operation',outputs[-1]['output'])
+            self.assertIn('retry this operation',outputs[-1]['output'][0]['text'])

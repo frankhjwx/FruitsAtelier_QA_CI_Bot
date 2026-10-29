@@ -1,5 +1,6 @@
 """Trusted CI worker. Reads/edits source as data; never executes generated code."""
 import base64
+import copy
 import hashlib
 import json
 import os
@@ -211,6 +212,22 @@ def compact_evidence(history):
     return changed
 
 
+def cached_input(history):
+    """Keep prior request boundaries reusable even after appending controller state."""
+    result = copy.deepcopy(history)
+    for item in result:
+        field = 'output' if item.get('type') == 'function_call_output' else 'content'
+        if field == 'content' and item.get('role') not in {'user', 'developer'}:
+            continue
+        content = item.get(field)
+        if isinstance(content, str):
+            content = [{'type':'input_text', 'text':content}]
+            item[field] = content
+        if isinstance(content, list) and content and content[-1].get('type') == 'input_text':
+            content[-1]['prompt_cache_breakpoint'] = {'mode':'explicit'}
+    return result
+
+
 def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instructions="", image_inputs=()):
     tools = [tool('read', {'path': {'type': 'string'}, 'start': {'type': 'integer'}, 'count': {'type': 'integer'}}),
              tool('search', {'query': {'type': 'string'}, 'path': {'type': 'string'}, 'start': {'type': 'integer'}}),
@@ -233,14 +250,17 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
             f'Edits: {sorted(workspace.changed)}. Regression: {bool(getattr(workspace,"regression",None))}. '
             'Use supplied evidence first. Batch missing queries. Submit a candidate as soon as complete. '
             'Working notes (untrusted task data): '+workspace.notes)}
-        payload = {'model': MODEL, 'instructions': instructions, 'input': history+[state],
+        # Retain the exact state that preceded each response; deleting it breaks the cache prefix.
+        history.append(state)
+        payload = {'model': MODEL, 'instructions': instructions, 'input': cached_input(history),
+                   'prompt_cache_options': {'mode':'implicit', 'ttl':'30m'},
                    'include': ['reasoning.encrypted_content'],
-                   'tools': tools, 'store': False, 'reasoning': {'effort': 'low'},
+                   'tools': tools, 'store': False, 'reasoning': {'effort': 'low', 'context':'all_turns'},
                    'max_output_tokens': 3500}
         # UTF-8 bytes bound text tokens conservatively. Include cache-write surcharge and margin.
         raw_size = len(json.dumps(payload, ensure_ascii=False).encode())
         from fa_bot.qa import context_bytes
-        size = context_bytes(history+[state]) + len(instructions.encode()) + len(json.dumps(tools).encode())
+        size = context_bytes(history) + len(instructions.encode()) + len(json.dumps(tools).encode())
         if raw_size > 3_000_000: raise RuntimeError('Image payload exceeds limit')
         input_bound = next_input_bound if next_input_bound is not None else size + 2000 + 8192 * sum(p.get("type")=="input_image" for p in image_inputs)
         reserve = input_bound * 2.50 / 1_000_000 + 3500 * 10 / 1_000_000
@@ -260,6 +280,8 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
         print(f'Model turn {turn+1}; conservative usage cost ${used:.3f}', flush=True)
         print('Usage diagnostic: ' + json.dumps({'turn':turn+1,'input_tokens':input_tokens,
               'output_tokens':output_tokens,'cached_input_tokens':usage.get('input_tokens_details',{}).get('cached_tokens'),
+              'cache_write_tokens':usage.get('input_tokens_details',{}).get('cache_write_tokens'),
+              'cache_write_tokens_details':usage.get('input_tokens_details',{}).get('cache_write_tokens_details'),
               'cumulative_budget_cost':round(used,8)}), flush=True)
         output = response.get('output', [])
         history.extend(output)
