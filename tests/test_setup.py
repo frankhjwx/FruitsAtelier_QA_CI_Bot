@@ -12,7 +12,7 @@ spec.loader.exec_module(wizard)
 class SetupTests(unittest.TestCase):
     def test_credentials_use_stdin_and_expected_destinations(self):
         values = {k: k + '-test-' + 'x'*30 for k in ('qa', 'ci', 'server', 'source')}
-        with patch.object(wizard, 'run_command', return_value='') as command, patch.object(wizard, 'api', return_value={}):
+        with patch.object(wizard, 'run_command', return_value='{"ok":true}') as command, patch.object(wizard, 'api', return_value={}):
             wizard.configure(values, False, lambda text: None)
         for call in command.call_args_list:
             argv = str(call.args[0])
@@ -31,6 +31,16 @@ class SetupTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 wizard.configure(values, True, lambda text: None)
         self.assertEqual(command.call_count, 2)
+
+    def test_server_access_failure_prevents_saving_or_starting(self):
+        values = {k: 'x'*30 for k in ('qa', 'ci', 'server', 'source')}
+        with patch.object(wizard, 'run_command', return_value='{"ok":false,"status":403}') as command, patch.object(wizard, 'api', return_value={}):
+            with self.assertRaisesRegex(RuntimeError, 'Deployment server cannot access'):
+                wizard.configure(values, True, lambda text: None)
+        self.assertEqual(command.call_count, 3)
+        self.assertNotIn('restart', str(command.call_args_list))
+        self.assertNotIn('secret', str(command.call_args_list))
+        compile(wizard.REMOTE_CHECK, '<remote check>', 'exec')
 
 
 if __name__ == '__main__':

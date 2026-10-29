@@ -41,6 +41,23 @@ print('Credentials installed')
 '''
 
 
+REMOTE_CHECK = """
+import json, sys, urllib.request, urllib.error
+key=json.load(sys.stdin)['key']
+request=urllib.request.Request('https://api.openai.com/v1/responses',
+    headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},
+    data=json.dumps({'model':'gpt-6-luna','input':'Reply OK.','max_output_tokens':64,
+                     'reasoning':{'effort':'low'},'store':False}).encode())
+try:
+    with urllib.request.urlopen(request,timeout=35) as response:
+        print(json.dumps({'ok':response.status==200}))
+except urllib.error.HTTPError as error:
+    print(json.dumps({'ok':False,'status':error.code}))
+except (urllib.error.URLError,TimeoutError):
+    print(json.dumps({'ok':False,'status':'connection_failed'}))
+"""
+
+
 def token_link(kind):
     return 'https://github.com/settings/personal-access-tokens/new?' + urllib.parse.urlencode({
         'name': 'FruitsAtelier-' + kind, 'target_name': 'frankhjwx',
@@ -98,6 +115,10 @@ def configure(values, start, report):
         api('https://api.openai.com/v1/responses', key, {
             'model': model, 'input': 'Reply OK.', 'max_output_tokens': 64,
             'reasoning': {'effort': 'low'}, 'store': False})
+    report('Checking OpenAI access from the deployment server...')
+    remote = json.loads(run_command(ssh_command('python3 -c ' + shlex.quote(REMOTE_CHECK)), json.dumps({'key': qa})))
+    if remote.get('ok') is not True:
+        raise RuntimeError('Deployment server cannot access OpenAI. Check server region, network and API permissions before starting the Bot.')
     report('Saving CI credentials to GitHub Secrets in the private Bot repository...')
     run_command(['gh', 'secret', 'set', 'FA_OPENAI_CI_KEY', '--repo', BOT_REPO], ci)
     run_command(['gh', 'secret', 'set', 'FA_SOURCE_TOKEN', '--repo', BOT_REPO], source)

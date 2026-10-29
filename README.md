@@ -86,7 +86,8 @@ token-creation links and the Discord invitation link. It checks access, saves
 the CI secrets through the locally authenticated GitHub CLI, and installs the
 server credentials over the existing host-verified SSH connection. Secrets are
 passed through stdin, never command-line arguments or local files. It performs
-one small Responses request per OpenAI key to verify access. Startup after save
+one small Responses request per OpenAI key locally and another QA request from
+the deployment server. A failed server check prevents saving and starting. Startup after save
 is optional. The window clears its fields after successful configuration.
 
 Requires Python 3.13+, a Discord bot with View Channel and Send Messages
