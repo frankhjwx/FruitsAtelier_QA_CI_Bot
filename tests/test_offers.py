@@ -13,6 +13,19 @@ def interaction(user=1):
 
 
 class OfferTests(unittest.IsolatedAsyncioTestCase):
+    async def test_user_reply_and_technical_handoff_stay_separate(self):
+        bot = NS(start_job=AsyncMock(return_value='Task accepted'), store=NS(job=lambda key: None))
+        public = '可以添加 osu! 粉色主题，并在设置中选择。'
+        task = 'Add osu! pink using EditorThemeId and EditorThemePalette.Palettes.'
+        localization = {'direction': 'Inspect DrawEditorThemeSelector and settings.theme.<id>',
+                        'locations': [{'path': 'src/Theme.cs', 'line': 12}]}
+        payload = qa_message(QAReply(public, task, localization=localization), bot, 1, 2)
+        self.assertEqual(payload['content'], public)
+        self.assertEqual(payload['view'].request, task)
+        event = interaction()
+        await payload['view'].confirm(event)
+        bot.start_job.assert_awaited_once_with(event, task, localization=localization)
+
     async def test_qa_does_not_dispatch_until_owner_confirms(self):
         bot=NS(start_job=AsyncMock(return_value='Task accepted'), store=NS(job=lambda key: None))
         data=qa_message(QAReply('Proposed feature.', 'Add a small feature requested by the user.'),bot,1,2)
