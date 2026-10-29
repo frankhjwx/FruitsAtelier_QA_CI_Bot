@@ -5,6 +5,26 @@ import worker
 
 
 class UsageBudgetTests(unittest.TestCase):
+    def test_large_read_batch_is_compacted_before_next_model_call(self):
+        with tempfile.TemporaryDirectory() as folder:
+            ws = worker.Workspace(folder)
+            calls = [{'type':'function_call','name':'read','call_id':str(i),
+                      'arguments':'{"path":"src/Test.cs","start":1}'} for i in range(8)]
+            responses = [
+                {'usage':{'input_tokens':100,'output_tokens':100},'output':calls},
+                {'usage':{'input_tokens':10000,'output_tokens':50},'status':'completed',
+                 'output':[{'type':'message','content':[{'type':'output_text','text':'Finished.'}]}]}]
+            with patch.object(worker,'request_json',side_effect=responses) as request, patch.object(ws,'read',return_value='x'*14000):
+                summary, cost = worker.generate(ws,'Inspect the anchor behavior','fake')
+            self.assertEqual(summary,'Finished.')
+            self.assertEqual(request.call_count,2)
+            history = request.call_args.args[3]['input']
+            outputs = [x for x in history if x.get('type')=='function_call_output']
+            self.assertEqual(len(outputs),8)
+            self.assertIn('omitted',outputs[0]['output'])
+            self.assertEqual(outputs[-1]['output'],'x'*14000)
+            self.assertLess(cost,worker.CAP)
+
     def test_measured_usage_releases_unused_reservation(self):
         with tempfile.TemporaryDirectory() as folder:
             ws=worker.Workspace(folder)

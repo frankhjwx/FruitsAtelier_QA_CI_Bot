@@ -130,6 +130,24 @@ def tool(name, properties):
                                           'required': list(properties), 'additionalProperties': False}}
 
 
+def compact_evidence(history):
+    from fa_bot.qa import context_bytes
+    if context_bytes(history) <= 70000:
+        return False
+    queries = {item.get('call_id') for item in history
+               if item.get('type') == 'function_call' and
+               item.get('name') in {'read', 'search', 'sample_read'}}
+    changed = False
+    for item in history:
+        if (item.get('type') == 'function_call_output' and item.get('call_id') in queries
+                and len(item.get('output', '').encode()) > 500):
+            item['output'] = '[Earlier query result omitted to keep context bounded. Read/search again if needed.]'
+            changed = True
+            if context_bytes(history) <= 50000:
+                break
+    return changed
+
+
 def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instructions="", image_inputs=()):
     tools = [tool('read', {'path': {'type': 'string'}, 'start': {'type': 'integer'}}),
              tool('search', {'query': {'type': 'string'}}),
@@ -138,6 +156,9 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
     history = [{'role': 'user', 'content': ([{'type':'input_text','text':prompt}]+list(image_inputs)) if image_inputs else prompt}]
     next_input_bound = None
     for turn in range(12):
+        if compact_evidence(history):
+            next_input_bound = None
+            print('Compacted earlier query results; source edits and regression remain available.', flush=True)
         payload = {'model': MODEL, 'instructions': INSTRUCTIONS + extra_instructions, 'input': history,
                    'include': ['reasoning.encrypted_content'],
                    'tools': tools, 'store': False, 'reasoning': {'effort': 'low'},
@@ -149,7 +170,9 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
         if raw_size > 3_000_000: raise RuntimeError('Image payload exceeds limit')
         input_bound = next_input_bound if next_input_bound is not None else size + 2000 + 8192 * sum(p.get("type")=="input_image" for p in image_inputs)
         reserve = input_bound * 2.50 / 1_000_000 + 3500 * 10 / 1_000_000
-        if size > 100_000 or used + reserve > CAP:
+        if size > 100_000:
+            raise RuntimeError('Task context limit reached; no branch was published')
+        if used + reserve > CAP:
             raise RuntimeError('Task budget reached before completion; no branch was published')
         response = request_json('https://api.openai.com/v1/responses', api_key, 'POST', payload)
         usage = response.get('usage', {})
