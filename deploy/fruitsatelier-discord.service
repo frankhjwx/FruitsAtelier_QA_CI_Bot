@@ -1,0 +1,32 @@
+[Unit]
+Description=FruitsAtelier direct Discord support bot
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/fruitsatelier-discord/openai-key
+ConditionPathExists=/etc/fruitsatelier-discord/github-token
+
+[Service]
+Type=simple
+User=fruitsatelier-qabot
+Group=fruitsatelier-qabot
+WorkingDirectory=/opt/fruitsatelier-discord
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=STATE_FILE=/var/lib/fruitsatelier-discord/bot.sqlite3
+Environment=BOT_REPO=frankhjwx/FruitsAtelier_QA_CI_Bot
+Environment=DISCORD_TOKEN_FILE=/etc/fruitsatelier-discord/discord-token
+Environment=OPENAI_API_KEY_FILE=/etc/fruitsatelier-discord/openai-key
+Environment=GITHUB_TOKEN_FILE=/etc/fruitsatelier-discord/github-token
+ExecStart=/opt/fruitsatelier-discord/venv/bin/python -m fa_bot.bot
+Restart=on-failure
+RestartSec=10
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/fruitsatelier-discord
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
