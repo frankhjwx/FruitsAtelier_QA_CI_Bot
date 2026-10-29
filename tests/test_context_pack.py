@@ -34,7 +34,8 @@ class ContextPackTests(unittest.TestCase):
             root=Path(directory)
             files={'src/FruitsAtelier.Core/Anchor.cs':
                    'namespace Actual.Domain;\nclass Curve { public bool MoveAnchor(int time) { '+ '/* anchor movement */ '*12+' return true; } }',
-                   'tests/Anchor.cs':'class Checks { public void MoveAnchor() { '+'/* anchor test */ '*14+' } }'}
+                   'tests/Anchor.cs':'class Checks { public void MoveAnchor() { '+'/* anchor test */ '*14+' } }',
+                   'tests/AnchorSnapTests.cs':'class AnchorSnapTests {\n public void Dragging() { '+'/* preserve snapping */ '*14+' }\n}'}
             for name,body in files.items():
                 path=root/name; path.parent.mkdir(parents=True,exist_ok=True); path.write_text(body)
             ws=worker.Workspace(root)
@@ -43,4 +44,5 @@ class ContextPackTests(unittest.TestCase):
             self.assertIn('MoveAnchor',result)
             self.assertIn('tests/Anchor.cs',result)
             self.assertIn('namespace Actual.Domain;',result)
+            self.assertIn('preserve snapping',result)
             self.assertLessEqual(len(result.encode()),18100)

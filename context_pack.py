@@ -64,17 +64,26 @@ def evidence_pack(workspace, request, feedback=''):
     code_pieces=[]
     primary_symbol=''
     primary_owner=''
-    for prefix,limit,cap in [('src/FruitsAtelier.Core/',1,3500),('src/FruitsAtelier.App/',2,4000),('tests/',1,2500)]:
+    for prefix,limit,cap in [('src/FruitsAtelier.Core/',1,3500),('src/FruitsAtelier.App/',1,4000),('tests/',2,3000)]:
         selected=0
         hits=[]
         if primary_symbol:
             hits.extend(index.search(primary_symbol,limit=3,budget=14000,prefix=prefix))
-        for term in list(dict.fromkeys(query_terms(request)))[:2]:
+        concepts=list(dict.fromkeys(query_terms(request)))[:2]
+        concepts.sort(key=lambda term:term.lower() not in primary_symbol.lower())
+        for term in concepts:
             hits.extend(index.search(term,limit=3,budget=14000,prefix=prefix))
         hits.extend(index.search(query,limit=6,budget=20000,prefix=prefix))
         # Interleave the two main concepts rather than letting a common noun fill the pack.
         hits=hits[::3]+[hit for i,hit in enumerate(hits) if i%3]
         for hit in hits:
+            if len(hit['text'])<180 and prefix=='tests/':
+                # A class header is a useful location, but its test bodies provide the contract.
+                rows=index.db.execute('SELECT start,end,symbol,body FROM chunks WHERE path=? AND symbol LIKE ? ORDER BY CAST(start AS INTEGER)',
+                                      (hit['path'],hit['symbol']+'.%')).fetchall()
+                candidate=next((row for row in rows if len(row[3])>=180),None)
+                if candidate:
+                    hit=dict(hit,start=int(candidate[0]),end=int(candidate[1]),symbol=candidate[2],text=candidate[3])
             if len(hit['text'])<180: continue
             marker=(hit['path'],hit['start'])
             if marker in seen: continue
