@@ -16,7 +16,8 @@ class ContextPackTests(unittest.TestCase):
             path.write_text('namespace Actual;\n// Preserve endpoint snapping behavior')
             ws=worker.Workspace(root)
             with patch.object(worker.subprocess,'check_output',side_effect=['sha',name,'',name]):
-                result=evidence_pack(ws,'anchor',r'at Check in D:\a\source\tests\Checks\AnchorTests.cs:line 49')
+                feedback=concise_failures({'exit':1,'output':r'at Check in D:\a\source\tests\Checks\AnchorTests.cs:line 49'})
+                result=evidence_pack(ws,'anchor',feedback)
             self.assertIn('Preserve endpoint snapping behavior',result)
             self.assertIn('FAILING CHECK SOURCE '+name,result)
 

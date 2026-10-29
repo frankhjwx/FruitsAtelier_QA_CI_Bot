@@ -111,7 +111,7 @@ def concise_failures(results):
                 lines.append(f'{path}: exit={value["exit"]}')
                 output=value.get('output','')
                 relevant=[line.strip() for line in output.splitlines()
-                          if re.search(r'error [A-Z]+\d+|^FAIL |Exception|expected|actual',line,re.I)]
+                          if re.search(r'error [A-Z]+\d+|^FAIL |Exception|expected|actual|\.cs:line \d+',line,re.I)]
                 lines.extend(relevant or output.splitlines()[-5:])
             if value.get('error'): lines.append(f'{path}: {value["error"]}')
             for key,child in value.items():
