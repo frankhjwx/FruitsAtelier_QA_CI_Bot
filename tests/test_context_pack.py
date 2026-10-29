@@ -7,6 +7,19 @@ from context_pack import evidence_pack, concise_failures
 
 
 class ContextPackTests(unittest.TestCase):
+    def test_repair_includes_test_from_windows_failure_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            name='tests/Checks/AnchorTests.cs'
+            path=root/name
+            path.parent.mkdir(parents=True)
+            path.write_text('namespace Actual;\n// Preserve endpoint snapping behavior')
+            ws=worker.Workspace(root)
+            with patch.object(worker.subprocess,'check_output',side_effect=['sha',name,'',name]):
+                result=evidence_pack(ws,'anchor',r'at Check in D:\a\source\tests\Checks\AnchorTests.cs:line 49')
+            self.assertIn('Preserve endpoint snapping behavior',result)
+            self.assertIn('FAILING CHECK SOURCE '+name,result)
+
     def test_failures_are_deduplicated_and_success_output_removed(self):
         results=[{'build':{'exit':1,'output':'error CS0117: missing Helper\n'*1000},
                   'other':{'exit':0,'output':'PASS secret content'}}]

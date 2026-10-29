@@ -39,6 +39,14 @@ def evidence_pack(workspace, request, feedback=''):
             remaining -= len(text.encode())
     if feedback:
         add('FAILED CHECKS (diagnostic data)',feedback,3500)
+        # Runner paths differ by platform; repository-relative failing test paths are stable.
+        failure_paths = re.findall(r'(?:tests|src)/[A-Za-z0-9_./-]+\.cs', feedback.replace('\\','/'))
+        for path in list(dict.fromkeys(failure_paths))[:2]:
+            try:
+                add('FAILING CHECK SOURCE '+path,workspace.path(path).read_text(encoding='utf-8'),4000)
+                header(path)
+            except (OSError, ValueError):
+                pass
         diff = subprocess.check_output(['git','-C',str(workspace.root),'diff','--no-ext-diff','--unified=3','HEAD','--',*sorted(workspace.changed)],text=True)
         tracked=set(subprocess.check_output(['git','-C',str(workspace.root),'ls-files'],text=True).splitlines())
         for name in sorted(workspace.changed-tracked):
