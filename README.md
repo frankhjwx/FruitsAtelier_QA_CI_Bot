@@ -79,6 +79,15 @@ folder is created on the server.
 Package ZIPs are downloaded by users from GitHub; the Bot server does not
 download or extract them.
 
+## Ignored announcement channels
+
+Papaya ignores `information`, `releases`, `arrivals`, `tutorials`, and `todo` under
+**Announcements and Infos**, including threads beneath those channels. Matching uses
+case-insensitive category and channel names. Mentions and replies stop before context
+retrieval, attachment processing, or paid QA. Slash commands and existing development
+buttons are acknowledged silently without starting work or posting a reply. Same-name
+channels under other categories retain normal behavior.
+
 ## Budget and execution boundaries
 
 Maintainers can set `benchmark=true` on the development workflow and supply a

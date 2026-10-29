@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import discord
+from .channel_policy import ignore_interaction
 from .messages import action_message, notify_owner
 
 LOG = logging.getLogger('fa_bot')
@@ -22,6 +23,8 @@ class PackageReview(discord.ui.View):
                 self.add_item(item)
 
     async def confirm(self, interaction):
+        if await ignore_interaction(interaction):
+            return
         if self.pending:
             await interaction.response.send_message('PR confirmation is being processed.', ephemeral=True)
             return

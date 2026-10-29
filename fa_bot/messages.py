@@ -1,6 +1,7 @@
 """Compact Discord messages with source links outside the answer body."""
 import re
 import discord
+from .channel_policy import ignore_interaction
 
 
 def linked_message(text, label='Source'):
@@ -54,6 +55,8 @@ class DevelopmentOffer(discord.ui.View):
                 self.add_item(item)
 
     async def confirm(self, interaction):
+        if await ignore_interaction(interaction):
+            return
         if interaction.user.id != self.owner or interaction.channel_id != self.channel:
             await interaction.response.send_message('Only the original requester can confirm this change.', ephemeral=True)
             return

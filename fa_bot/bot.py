@@ -9,6 +9,7 @@ import aiohttp
 import discord
 from discord import app_commands
 
+from .channel_policy import ignored_channel, ignore_interaction
 from .conversation import reply_context
 from .attachments import AttachmentStore
 from .transfer import create_transfer, start_transfer_server
@@ -27,12 +28,17 @@ TEMPLATE = ('Usage: version, OS, goal, what you tried.\n'
             'Feature: use case, desired behavior, one concrete example.')
 
 
+class CommandTree(app_commands.CommandTree):
+    async def interaction_check(self, interaction):
+        return not await ignore_interaction(interaction)
+
+
 class Bot(discord.Client):
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(intents=intents, allowed_mentions=discord.AllowedMentions.none())
-        self.tree = app_commands.CommandTree(self)
+        self.tree = CommandTree(self)
         self.store = Store(os.getenv('STATE_FILE', 'state/bot.sqlite3'))
         self.knowledge = Knowledge()
         self.attachments = AttachmentStore()
@@ -114,6 +120,8 @@ class Bot(discord.Client):
             self.busy -= 1
 
     async def on_message(self, message):
+        if ignored_channel(message.channel):
+            return
         if message.author.bot or not self.eligible(message.author.id, message.guild.id if message.guild else None):
             return
         is_reply, context = await reply_context(message, self.user.id)
