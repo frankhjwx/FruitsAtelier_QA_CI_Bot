@@ -80,6 +80,18 @@ class TransferTests(unittest.IsolatedAsyncioTestCase):
         with patch('fa_bot.transfer.time.time',return_value=self.created+TTL+1):
             self.assertEqual((await self.client.get(endpoint+'progress-edit',headers=edit)).status,410)
 
+    async def test_cancellation_revokes_edit_and_validation_capabilities(self):
+        from fa_bot.transfer import revoke_transfer
+        endpoint='/ci/'+KEY+'/'
+        edit={'Authorization':'Bearer '+self.token}
+        manifest=await (await self.client.get(endpoint+'manifest',headers=edit)).json()
+        test={'Authorization':'Bearer '+manifest['test_token']}
+        revoke_transfer(KEY)
+        for headers in (edit,test):
+            self.assertEqual((await self.client.get(endpoint+'manifest',headers=headers)).status,410)
+        self.assertEqual((await self.client.put(endpoint+'candidate-1',json={},headers=edit)).status,410)
+        self.assertEqual((await self.client.put(endpoint+'result-1-windows',json={},headers=test)).status,410)
+
     async def test_expiry_covers_original_and_transfer_without_extension(self):
         with patch('fa_bot.transfer.time.time',return_value=self.created+TTL+1):
             response=await self.client.get('/ci/'+KEY+'/manifest',headers={'Authorization':'Bearer '+self.token})

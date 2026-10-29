@@ -29,6 +29,15 @@ editor's `dev` or `main` branches.
   own task ID and budget reservation.
 - `/task <task_id>`: retrieve status and the direct package link, including after a
   Discord delivery failure.
+- `/cancel [task_id]` or **Cancel task** on the progress message: stop an active
+  development task. Only its original requester in the original channel can cancel.
+  Omitting the ID selects the latest task. Progress and final results remain public;
+  command acknowledgements are private. Cancellation revokes the private transfer
+  and requests shutdown of editing, validation and package workflows. The repair
+  slot remains occupied until runners stop. Cancellation survives Bot restarts;
+  late validation/package dispatches are checked for up to ten minutes after the request.
+  Source already published is retained. Cancelled tasks cannot request a PR, and
+  cancellation does not refund model usage already incurred.
 
 Replies to Papaya also trigger QA without an explicit mention. The bot reads up
 to six preceding messages (1,000 characters each) from the same channel and

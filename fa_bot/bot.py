@@ -22,6 +22,7 @@ from .handoff import encode, decode, ready
 from .store import Store
 from .reviews import PackageReview, poll_reviews
 from .progress import bind_progress, update_progress, edit_progress, progress_content
+from .cancellation import CancelTask, request_cancel, reconcile_cancel
 
 LOG = logging.getLogger('fa_bot')
 TEMPLATE = ('Usage: version, OS, goal, what you tried.\n'
@@ -62,6 +63,9 @@ class Bot(discord.Client):
         latest = self.store.latest_job()
         if latest and latest['status'] == 'success' and self.store.review(latest['id']):
             self.add_view(PackageReview(self, latest['id']))
+        for job in self.store.pending():
+            if job['status'] not in ('cancelling','cancelled'):
+                self.add_view(CancelTask(self,job['id']))
         self.workers = [asyncio.create_task(self.sync_knowledge()), asyncio.create_task(self.poll_jobs()),
                         asyncio.create_task(poll_reviews(self))]
 
@@ -160,8 +164,13 @@ class Bot(discord.Client):
         while True:
             for job in self.store.pending():
                 try:
+                    if self.store.cancellation(job['id']):
+                        await reconcile_cancel(self,job)
+                        continue
                     building = job['status'] == 'building'
                     run = await (self.github.run(job['run_id'], build=building) if job['run_id'] else self.github.find_run(job['id']))
+                    if self.store.cancellation(job['id']):
+                        continue
                     if not run:
                         if time.time() - job['created'] > 600:
                             self.store.update(job['id'], 'dispatch_uncertain')
@@ -185,6 +194,8 @@ class Bot(discord.Client):
                         continue
                     status = run['conclusion']
                     package = await self.github.package_url(run['id'], job['id']) if building and status == 'success' else None
+                    if self.store.cancellation(job['id']):
+                        continue
                     # Mark before sending: a Discord timeout must not cause duplicate notifications.
                     self.store.update(job['id'], 'notifying', run['id'], run['html_url'])
                     channel = self.get_channel(int(job['channel'])) or await self.fetch_channel(int(job['channel']))
@@ -306,6 +317,15 @@ class Bot(discord.Client):
         async def template(interaction: discord.Interaction):
             await interaction.response.send_message(TEMPLATE, ephemeral=True)
 
+        @self.tree.command(name='cancel', description='Cancel your running development task')
+        async def cancel(interaction: discord.Interaction, task_id: str | None = None):
+            await interaction.response.defer(thinking=True,ephemeral=True)
+            if task_id is None:
+                latest=self.store.latest_job()
+                if not latest: raise ValueError('No development task is available to cancel.')
+                task_id=latest['id']
+            await interaction.followup.send(await request_cancel(self,interaction,task_id.strip()),ephemeral=True)
+
         @self.tree.command(name='task', description='Look up one of your task results')
         async def task(interaction: discord.Interaction, task_id: str):
             job = self.store.job(task_id)
@@ -321,9 +341,9 @@ class Bot(discord.Client):
                     payload = action_message('This test build is no longer available. Please ask the maintainer for a new build.')
                 await interaction.followup.send(**payload, ephemeral=True)
             else:
-                if job['status'] in ('dispatching','queued','running','building','dispatch_uncertain','build_dispatch_uncertain'):
+                if job['status'] in ('dispatching','queued','running','building','dispatch_uncertain','build_dispatch_uncertain','cancelling'):
                     await interaction.response.defer(ephemeral=True)
-                    run=await self.github.run(job['run_id'],build=job['status']=='building') if job['run_id'] else None
+                    run=await self.github.run(job['run_id'],build=job['status']=='building') if job['run_id'] and job['status']!='cancelling' else None
                     await interaction.followup.send(await progress_content(self,job,run),ephemeral=True)
                 else:
                     await interaction.response.send_message(f'Task status: {job["status"]}', ephemeral=True)

@@ -24,7 +24,7 @@ class GitHub:
             if response.status >= 400:
                 # API payloads can contain private request text; log only the status.
                 raise RuntimeError(f'GitHub returned HTTP {response.status}')
-            return await response.json() if response.status != 204 else None
+            return await response.json() if response.status not in (202,204) else None
 
     async def dispatch(self, key, request, branch, transfer_token=""):
         await self.request('POST', f'/repos/{self.repo}/actions/workflows/discord-develop.yml/dispatches',
@@ -44,6 +44,24 @@ class GitHub:
     async def run(self, run_id, build=False):
         repo = SOURCE_REPO if build else self.repo
         return await self.request('GET', f'/repos/{repo}/actions/runs/{run_id}')
+
+    async def cancel_task(self, key, run_id=None, build=False):
+        parent=await (self.run(run_id) if run_id and not build else self.find_run(key))
+        preview=await (self.run(run_id,build=True) if run_id and build else self.find_run(key,build=True))
+        data=await self.request('GET',f'/repos/{self.repo}/actions/workflows/discord-validate.yml/runs?event=workflow_dispatch&per_page=100')
+        titles={f'FA validation {key}.{attempt}' for attempt in (1,2)}
+        validations=[run for run in data['workflow_runs'] if run['display_title'] in titles]
+        runs=[(self.repo,run) for run in ([parent] if parent else [])+validations]
+        if preview: runs.append((SOURCE_REPO,preview))
+        stopped=True
+        for repo,run in runs:
+            if run['status']=='completed': continue
+            stopped=False
+            try:
+                await self.request('POST',f'/repos/{repo}/actions/runs/{run["id"]}/cancel')
+            except RuntimeError as error:
+                if 'HTTP 409' not in str(error): raise
+        return stopped, parent is not None
 
     async def run_jobs(self, run_id, build=False):
         repo = SOURCE_REPO if build else self.repo

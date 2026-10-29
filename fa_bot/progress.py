@@ -19,6 +19,7 @@ LOG = logging.getLogger('fa_bot.progress')
 
 def progress_snapshot(job):
     stage = {'dispatching': 'Submitting the task', 'queued': 'Waiting for a CI runner',
+             'cancelling': 'Cancelling the task; waiting for GitHub jobs to stop',
              'running': 'Inspecting code and preparing the change',
              'building': 'Regression checks passed; preparing your test build',
              'dispatch_uncertain': 'Waiting to confirm that CI received the task',
@@ -62,6 +63,8 @@ def progress_snapshot(job):
 
 
 def remaining_text(job, now, estimate=None, started=None, queued=False):
+    if job['status']=='cancelling':
+        return 'Cancellation is in progress; runner shutdown time is not predictable.'
     if job['status'] in ('dispatch_uncertain','build_dispatch_uncertain'):
         return 'Estimated remaining: unavailable until the workflow is confirmed.'
     historical=estimate is not None
@@ -158,6 +161,8 @@ async def update_progress(bot, job, force=False, run=None):
     bot.store.progress_attempt(job['id'], now)
     try:
         content = await progress_content(bot,job,run)
-        await edit_progress(bot, job, {'content': content, 'view': None, 'suppress_embeds': True})
+        from .cancellation import CancelTask
+        view=None if job['status']=='cancelling' else CancelTask(bot,job['id'])
+        await edit_progress(bot, job, {'content': content, 'view': view, 'suppress_embeds': True})
     except Exception as error:
         LOG.warning('Progress update failed for %s: %s', job['id'], type(error).__name__)

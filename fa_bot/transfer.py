@@ -95,9 +95,18 @@ def locate(key):
     return folder,data
 
 
+def revoke_transfer(key):
+    try:
+        folder,_=locate(key)
+    except (web.HTTPNotFound,web.HTTPGone):
+        return
+    (folder/'cancelled').touch(mode=0o600,exist_ok=True)
+
+
 async def transfer(request):
     key=request.match_info['key']; item=request.match_info['item']
     folder,data=locate(key)
+    if (folder/'cancelled').exists(): raise web.HTTPGone()
     token=request.headers.get('Authorization','').removeprefix('Bearer ')
     role=next((role for role in ('edit','test') if hmac.compare_digest(token,data[role])),None)
     if role is None:

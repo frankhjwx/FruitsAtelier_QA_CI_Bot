@@ -234,6 +234,7 @@ def main():
                     print(f'Acceptance passed after {attempt} rounds; no public source was changed.',flush=True)
                     return
                 transfer.progress('edit','publishing',attempt)
+                transfer.json('manifest')
                 sha=worker.publish(workspace,branch,key,'Targeted Windows regression passed on baseline/fixed comparison; full regression suites run on the PR; macOS validation is disabled.',token,base)
                 with open(os.environ['GITHUB_OUTPUT'],'a') as out: out.write(f'commit={sha}\n')
                 receipt={'job_id':key,'sha':sha,'regression_verified':True,'attempts':attempt,'sample_count':len(hashes),'test_sha256':digest,'cost':spent}

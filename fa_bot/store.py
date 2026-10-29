@@ -18,6 +18,8 @@ class Store:
           CREATE TABLE IF NOT EXISTS job_attachments (job_id TEXT PRIMARY KEY, ids TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS job_progress (
             job_id TEXT PRIMARY KEY, message_id TEXT NOT NULL, updated REAL NOT NULL);
+          CREATE TABLE IF NOT EXISTS job_cancellations (
+            job_id TEXT PRIMARY KEY, created REAL NOT NULL, run_id INTEGER, building INTEGER NOT NULL);
           CREATE TABLE IF NOT EXISTS reviews (
             job_id TEXT PRIMARY KEY, sha TEXT, state TEXT, url TEXT,
             number INTEGER, created REAL);
@@ -88,11 +90,34 @@ class Store:
             self.db.execute('UPDATE job_progress SET updated=? WHERE job_id=?', (now, key))
 
     def pending(self):
-        return self.db.execute("SELECT * FROM jobs WHERE status IN ('dispatching','queued','running','building')").fetchall()
+        return self.db.execute("""SELECT jobs.* FROM jobs LEFT JOIN job_cancellations c ON c.job_id=jobs.id
+            WHERE status IN ('dispatching','queued','running','building','cancelling')
+            OR (status='cancelled' AND c.created>?)""",(time.time()-600,)).fetchall()
+
+    def cancellation(self, key):
+        return self.db.execute('SELECT * FROM job_cancellations WHERE job_id=?',(key,)).fetchone()
+
+    def request_cancel(self, key, owner, channel):
+        self.db.execute('BEGIN IMMEDIATE')
+        try:
+            job=self.job(key)
+            if not job or job['owner']!=str(owner) or job['channel']!=str(channel):
+                raise ValueError('Only the original requester in the original channel can cancel this task.')
+            if job['status']=='cancelled':
+                raise ValueError('This task is already cancelled.')
+            if job['status'] not in ('dispatching','queued','running','building','dispatch_uncertain','build_dispatch_uncertain','cancelling'):
+                raise ValueError('This task has already finished and cannot be cancelled.')
+            self.db.execute('INSERT OR IGNORE INTO job_cancellations VALUES (?,?,?,?)',
+                            (key,time.time(),job['run_id'],int(job['status']=='building')))
+            self.db.execute("UPDATE jobs SET status='cancelling' WHERE id=?",(key,))
+            self.db.commit()
+        except BaseException:
+            self.db.rollback()
+            raise
 
     def repair_active(self):
         # An uncertain dispatch may still be executing and must retain the slot.
-        return (self.db.execute("SELECT 1 FROM jobs WHERE status IN ('dispatching','queued','running','building','dispatch_uncertain','build_dispatch_uncertain') LIMIT 1").fetchone() is not None or bool(self.active_reviews()))
+        return (self.db.execute("SELECT 1 FROM jobs WHERE status IN ('dispatching','queued','running','building','dispatch_uncertain','build_dispatch_uncertain','cancelling') LIMIT 1").fetchone() is not None or bool(self.active_reviews()))
 
     def latest_job(self):
         return self.db.execute('SELECT * FROM jobs ORDER BY created DESC, rowid DESC LIMIT 1').fetchone()
