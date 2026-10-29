@@ -1,0 +1,17 @@
+[Unit]
+Description=Remove expired Papaya attachment files
+
+[Service]
+Type=oneshot
+User=fruitsatelier-qabot
+Group=fruitsatelier-qabot
+WorkingDirectory=/opt/fruitsatelier-discord
+Environment=ATTACHMENT_DIR=/var/lib/fruitsatelier-discord/attachments
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/fruitsatelier-discord/venv/bin/python /opt/fruitsatelier-discord/deploy/cleanup_attachments.py
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/fruitsatelier-discord

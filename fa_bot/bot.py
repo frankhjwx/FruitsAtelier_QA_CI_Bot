@@ -10,6 +10,7 @@ import discord
 from discord import app_commands
 
 from .conversation import reply_context
+from .attachments import AttachmentStore
 from .config import GUILDS, OWNER, JOB_CAP, WORK_BRANCH, secret
 from .github import GitHub
 from .knowledge import Knowledge
@@ -32,6 +33,7 @@ class Bot(discord.Client):
         self.tree = app_commands.CommandTree(self)
         self.store = Store(os.getenv('STATE_FILE', 'state/bot.sqlite3'))
         self.knowledge = Knowledge()
+        self.attachments = AttachmentStore()
         self.cooldowns = {}
         self.busy = 0
         self.workers = []
@@ -77,12 +79,19 @@ class Bot(discord.Client):
         if len(self.cooldowns) > 5000:
             self.cooldowns = {k: v for k, v in self.cooldowns.items() if now - v < 60}
 
-    async def ask(self, user, request_id, question, context=()):
+    async def ask(self, user, request_id, question, context=(), uploads=(), channel=None):
         self.admit(user)
         self.busy += 1
         try:
             self.store.reserve(str(request_id), 'qa', .02)
-            text, cost = await answer(self.http_session, self.api_key, self.knowledge, question, context=context)
+            parts = []
+            ids = [item['attachment_id'] for item in reversed(context) if 'attachment_id' in item]
+            if uploads:
+                await self.attachments.capture(self.http_session, user, channel, request_id, uploads)
+                ids.insert(0, request_id)
+            if ids:
+                parts = await asyncio.to_thread(self.attachments.read, user, channel, ids)
+            text, cost = await answer(self.http_session, self.api_key, self.knowledge, question, context=context, attachments=parts)
             self.store.settle(str(request_id), cost)
             return text
         except APIError as error:
@@ -102,11 +111,13 @@ class Bot(discord.Client):
         if message.guild and self.user not in message.mentions and not is_reply:
             return
         question = re.sub(r'<@!?\d+>', '', message.content).strip()
-        if not question:
+        uploads = getattr(message, 'attachments', ())
+        if not question and not uploads:
             return
+        question = question or 'Please inspect the attached files and explain any relevant issues.'
         try:
             async with message.channel.typing():
-                text = await self.ask(message.author.id, message.id, question, context=context)
+                text = await self.ask(message.author.id, message.id, question, context=context, uploads=uploads, channel=message.channel.id)
             payload = qa_message(text, self, message.author.id, message.channel.id)
             sent = await message.reply(**payload, mention_author=False)
             if text.change_request:
@@ -213,12 +224,12 @@ class Bot(discord.Client):
 
     def register_commands(self):
         @self.tree.command(name='ask', description='Ask a FruitsAtelier usage, feature or bug question')
-        async def ask(interaction: discord.Interaction, question: str):
+        async def ask(interaction: discord.Interaction, question: str, attachment: discord.Attachment | None = None):
             if not self.eligible(interaction.user.id, interaction.guild_id):
                 await interaction.response.send_message('This server is not enabled.', ephemeral=True)
                 return
             await interaction.response.defer(thinking=True)
-            reply = await self.ask(interaction.user.id, interaction.id, question)
+            reply = await self.ask(interaction.user.id, interaction.id, question, uploads=[attachment] if attachment else (), channel=interaction.channel_id)
             payload = qa_message(reply, self, interaction.user.id, interaction.channel_id)
             sent = await interaction.followup.send(**payload, wait=True)
             if reply.change_request:

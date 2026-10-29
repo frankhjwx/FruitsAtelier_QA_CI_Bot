@@ -28,9 +28,12 @@ async def reply_context(message, bot_id):
                         break
                 if parent.author.id not in (bot_id, message.author.id):
                     break
-                if parent.content:
-                    context.append({'role': 'assistant' if parent.author.id == bot_id else 'user',
-                                    'content': parent.content[:1000]})
+                if parent.content or getattr(parent, 'attachments', ()):
+                    item = {'role': 'assistant' if parent.author.id == bot_id else 'user',
+                            'content': parent.content[:1000]}
+                    if parent.author.id == message.author.id and getattr(parent, 'attachments', ()):
+                        item['attachment_id'] = parent.id
+                    context.append(item)
                 current = parent
     except (TimeoutError, discord.HTTPException):
         pass

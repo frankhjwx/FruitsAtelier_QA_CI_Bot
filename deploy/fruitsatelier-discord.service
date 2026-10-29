@@ -17,6 +17,7 @@ Environment=BOT_REPO=frankhjwx/FruitsAtelier_QA_CI_Bot
 Environment=DISCORD_TOKEN_FILE=/etc/fruitsatelier-discord/discord-token
 Environment=OPENAI_API_KEY_FILE=/etc/fruitsatelier-discord/openai-key
 Environment=GITHUB_TOKEN_FILE=/etc/fruitsatelier-discord/github-token
+ExecStartPre=/opt/fruitsatelier-discord/venv/bin/python /opt/fruitsatelier-discord/deploy/cleanup_attachments.py
 ExecStart=/opt/fruitsatelier-discord/venv/bin/python -m fa_bot.bot
 Restart=on-failure
 RestartSec=10

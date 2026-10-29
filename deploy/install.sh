@@ -18,5 +18,9 @@ fi
 python3 -m venv venv
 venv/bin/python -m pip install -v -r requirements.txt
 install -o root -g root -m 0644 deploy/fruitsatelier-discord.service /etc/systemd/system/fruitsatelier-discord.service
+install -d -o fruitsatelier-qabot -g fruitsatelier-qabot -m 0700 /var/lib/fruitsatelier-discord/attachments
+install -o root -g root -m 0644 deploy/fruitsatelier-attachments-cleanup.service /etc/systemd/system/
+install -o root -g root -m 0644 deploy/fruitsatelier-attachments-cleanup.timer /etc/systemd/system/
 systemctl daemon-reload
+systemctl enable --now fruitsatelier-attachments-cleanup.timer
 echo 'Installed. The service remains stopped until credentials are configured.'

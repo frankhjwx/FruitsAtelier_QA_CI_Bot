@@ -124,14 +124,14 @@ permissions, and the `applications.commands` scope.
 Command registration skips configured guilds where the bot is not yet invited,
 so an available test guild can be used before the production invitation.
 Install `requirements.txt` in a dedicated virtual environment. The server stores
-only SQLite state and credentials; it never runs editor tests/builds or creates
+SQLite state, credentials and temporary user attachments; it never runs editor tests/builds or creates
 an `artifacts/` directory.
 
 The `discord-develop.yml` workflow must exist on this Bot repository's default
 `main` branch. The editor repository's `discord-preview.yml` must exist on its
 own default `main` branch. GitHub requires these locations for dispatch. The
 editing workflow dispatches the editor workflow with an exact source SHA; the
-Bot tracks both phases and sends users the public editor run link.
+Bot tracks both phases and sends users a direct link to the public test-package artifact.
 Add the CI service-account key
 as repository secret `FA_OPENAI_CI_KEY`. Add `FA_SOURCE_TOKEN`, a separate GitHub
 fine-grained token restricted to `frankhjwx/FruitsAtelier` with **Contents: Read
@@ -180,3 +180,54 @@ Before opening to users, verify a real `/ask` with source links and measure its
 latency; submit one bounded `/develop`, check both platform jobs, download and
 run the test package, and use `/revise` to verify branch continuation. A missing key or a mocked API
 test cannot establish live model access, latency or successful code generation.
+
+## User attachments
+
+Mention Papaya (or reply to it) with up to four attachments. `/ask` also accepts
+one optional attachment. Supported formats:
+
+- Images: PNG, JPEG, WebP, BMP and GIF (first frame only). Up to two images are
+  sent per question, resized to fit 1536 x 1536. Video is not supported.
+- Native files: `.catchdiff`, `.catchproj`, `.catchsync`; archives `.faz`, `.fad`,
+  `.fpt` and legacy `.fap`; osu! files `.osu`, `.osz`, `.osk`, `.osb`.
+- Diagnostics: `.log`, `.txt`, `.json`, `.ini`, and `.zip` diagnostic bundles.
+- Audio: MP3, OGG, WAV, FLAC, AAC and M4A. Only header metadata (duration, sample
+  rate, channels, bitrate) is inspected; the Bot does not listen, transcribe,
+  fully decode or verify playback.
+
+Files are limited to 25 MiB each and 40 MiB per message. Archive inspection reads
+up to eight bounded text entries; it never extracts paths, runs files, or decodes
+embedded media/nested archives. Large text includes labeled partial excerpts.
+Invalid files produce an explicit unreadable-file observation for the model.
+This is static support evidence, not an editor reproduction or import validation.
+For beatmap issues, Papaya requests the smallest necessary sample once, and uses
+repository documentation to explain FAZ/FAD export steps. It preserves relevant
+observations in the proposed CI task. Original uploads are not sent to CI or
+committed to the public source repository.
+
+Replies can reuse attachments from the same user's explicit reply chain in the
+same channel (up to three source messages). Expired attachments are not fetched
+again automatically. The raw files and their temporary filename manifest live in
+`/var/lib/fruitsatelier-discord/attachments`, with private directory/file modes.
+No attachment contents are logged or added to the Bot database. The generated
+QA response and development task can contain relevant findings.
+
+`deploy/cleanup_attachments.py` is run by the independent systemd timer
+`fruitsatelier-attachments-cleanup.timer` every hour. It deletes batches aged
+23 hours minus one minute, leaving scheduling margin to keep local retention
+below 24 hours during normal operation. Reads do not extend retention. Cleanup
+also runs before Bot startup, including after downtime; a powered-off host cannot
+physically delete files until it starts. This policy covers the Bot's local
+copies, not the original Discord upload or provider-side retention.
+Temporary storage is capped at 500 MiB. Deployment via `deploy/install.sh`
+installs/enables the timer; check it with:
+
+```sh
+systemctl list-timers fruitsatelier-attachments-cleanup.timer
+systemctl status fruitsatelier-attachments-cleanup.service --no-pager
+```
+
+QA and editing model instructions restrict assistance to Fruits Atelier and osu!,
+including directly related beatmaps, resources and troubleshooting. Unrelated
+requests are declined; unrelated parts of mixed requests are not answered.
+This is a prompt-level policy, not a keyword blacklist or code-based topic filter.
