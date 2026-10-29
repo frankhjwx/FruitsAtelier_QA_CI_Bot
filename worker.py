@@ -214,33 +214,6 @@ def publish(workspace, branch, key, summary, token, parent):
     return commit['sha']
 
 
-def main():
-    if os.getenv('GITHUB_ACTIONS') != 'true':
-        raise RuntimeError('Development worker runs only on GitHub Actions')
-    key, branch = os.environ['JOB_ID'], os.environ['TASK_BRANCH']
-    if not re.fullmatch(r'\d{15,22}', key) or branch != 'codex-discord-bug-fix':
-        raise ValueError('Invalid task identity')
-    pending = request_json(f'https://api.github.com/repos/{REPO}/pulls?state=open&base=dev&head=frankhjwx:{branch}', os.environ['GH_TOKEN'])
-    if pending:
-        raise RuntimeError('The shared branch has a PR awaiting maintainer review')
-    root = Path(os.environ['SOURCE_ROOT']).resolve()
-    parent = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
-    previous_message = subprocess.check_output(['git', '-C', str(root), 'log', '-1', '--format=%B'], text=True)
-    if previous_message.startswith(f'Discord task {key}\n'):
-        with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
-            out.write(f'commit={parent}\n')
-        print('Reusing the existing commit for this task; no additional API call.')
-        return
-    workspace = Workspace(root)
-    prompt = os.environ['TASK_REQUEST'][:6000]
-    summary, reserved = generate(workspace, prompt, os.environ['OPENAI_API_KEY'])
-    sha = publish(workspace, branch, key, summary, os.environ['GH_TOKEN'], parent)
-    with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
-        out.write(f'commit={sha}\n')
-    with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
-        out.write(f'## Experimental change\n\nSource commit: `{sha}`\n\n{summary}\n\n'
-                  f'Conservative model usage cost: ${reserved:.3f}. Tests run in separate jobs.\n')
-
 
 if __name__ == '__main__':
-    main()
+    raise RuntimeError('Use repair_ci.py so private regression verification gates publication.')
