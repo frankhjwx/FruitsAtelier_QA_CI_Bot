@@ -17,7 +17,8 @@ class UsageBudgetTests(unittest.TestCase):
                 summary, cost = worker.generate(ws,'Inspect anchor behavior','fake')
             self.assertEqual(summary,'Finished.')
             self.assertEqual(request.call_count,13)
-            self.assertIn('38 model turns remain', request.call_args.args[3]['instructions'])
+            self.assertIn('38 model turns remain', request.call_args.args[3]['input'][-1]['content'])
+            self.assertEqual(request.call_args_list[0].args[3]['instructions'],request.call_args.args[3]['instructions'])
             self.assertLess(cost,worker.CAP)
 
     def test_large_read_batch_is_compacted_before_next_model_call(self):

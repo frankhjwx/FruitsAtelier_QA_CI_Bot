@@ -114,6 +114,19 @@ def main():
             result['acceptance_injected_failure']='Acceptance deliberately restored the faulty fixture for round one; resubmit the correct fix and keep the test unchanged.'
         result['test_sha256']=hashlib.sha256(candidate['regression']['code'].encode()).hexdigest()
         result['sample_hashes']=[f['sha256'] for f in manifest['files']]
+        if platform=='macos':
+            # Avoid full platform builds for a candidate already rejected by the Windows gate.
+            while time.time()<deadline:
+                try:
+                    gate=transfer.json(f'result-{attempt}-windows')
+                    break
+                except RuntimeError as error:
+                    if 'HTTP 404' not in str(error): raise
+                    time.sleep(10)
+            else: raise TimeoutError('Windows validation gate did not finish')
+            if not gate.get('passed'):
+                result['skipped']='Windows baseline/fixed or regression gate failed'
+                return
         if platform=='windows':
             for label,source in [('baseline',baseline),('fixed',fixed)]:
                 if candidate['regression']['target']=='app':
@@ -131,6 +144,8 @@ def main():
                 stage_index=root/(label+'-samples.json')
                 stage_index.write_text(json.dumps([{'path':str(stage_samples/f['file']),'name':f['name']} for f in manifest['files']]),encoding='utf-8')
                 result[label]=regression(source,root/(label+'-test'),candidate['regression']['code'],candidate['regression']['target'],stage_index,deadline)
+                if result[label]['build']['exit']!=0:
+                    return
             before=result['baseline']; after=result['fixed']
             if (before.get('run') or {}).get('exit')!=42 or (after.get('run') or {}).get('exit')!=0:
                 return

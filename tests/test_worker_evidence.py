@@ -19,7 +19,7 @@ class WorkerEvidenceTests(unittest.TestCase):
             with patch.object(worker.subprocess,'check_output',return_value='docs/noise.md\nsrc/Editor.cs\nsrc/Other.cs\n'):
                 first = workspace.search('MoveAnchor endpoint', 'src')
                 second = workspace.search('MoveAnchor endpoint', 'src', 41)
-                self.assertIn('45 matches; next start=41',first)
+                self.assertIn('45 matches; next start=21',first)
                 self.assertNotIn('noise.md',first)
                 self.assertIn('src/Editor.cs:45:',second)
                 self.assertIn('next start=none',second)
@@ -33,7 +33,7 @@ class WorkerEvidenceTests(unittest.TestCase):
             (root/'Test.cs').write_text('\n'.join('line '+str(i) for i in range(400)),encoding='utf-8')
             workspace = worker.Workspace(root)
             text = workspace.read('Test.cs', 121, 200)
-            self.assertIn('lines 121-320 of 400; next start=321',text)
+            self.assertIn('lines 121-240 of 400; next start=241',text)
             workspace.remember('Read Test.cs lines 121-320; edit endpoint swapping next.')
             history = []
             for i in range(8):

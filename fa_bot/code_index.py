@@ -1,6 +1,7 @@
 """Commit-pinned C# syntax chunks with local full-text retrieval; no model calls."""
 import hashlib
 import contextlib
+from collections import Counter
 import json
 import re
 import sqlite3
@@ -9,10 +10,10 @@ from pathlib import Path
 from tree_sitter import Language, Parser
 import tree_sitter_c_sharp
 
-FORMAT = 'csharp-structure-v1'
+FORMAT = 'csharp-structure-v2'
 DECLARATIONS = {'method_declaration', 'constructor_declaration', 'property_declaration',
                 'field_declaration', 'enum_declaration', 'delegate_declaration',
-                'operator_declaration', 'conversion_operator_declaration'}
+                'operator_declaration', 'conversion_operator_declaration', 'local_function_statement'}
 TYPES = {'class_declaration', 'struct_declaration', 'interface_declaration', 'record_declaration'}
 
 
@@ -77,21 +78,23 @@ class CodeIndex:
             self.db.execute('INSERT OR REPLACE INTO files VALUES (?,?)', (path, digest))
             self.db.executemany('INSERT INTO chunks VALUES (?,?,?,?,?,?,?)', rows)
 
-    def search(self, query, limit=5, budget=10000):
-        terms = list(dict.fromkeys(words(query)))[:24]
+    def search(self, query, limit=5, budget=10000, prefix='', snippets=True):
+        weights = Counter(words(query))
+        terms = list(weights)[:24]
         if not terms:
             return []
         expression = ' OR '.join('"'+word+'"' for word in terms)
         rows = self.db.execute('''SELECT path,start,end,symbol,body
-            FROM chunks WHERE chunks MATCH ? ORDER BY bm25(chunks,0,0,0,0,0,5,1) LIMIT 40''',
-                               (expression,)).fetchall()
+            FROM chunks WHERE chunks MATCH ? AND path LIKE ? ORDER BY bm25(chunks,0,0,0,0,0,5,1) LIMIT 200''',
+                               (expression,prefix+'%')).fetchall()
+        rows.sort(key=lambda row: -sum(weights[t] for t in set(words(row[3].rsplit('.',1)[-1])) & set(terms)))
         result = []
         seen = set()
         for path, start, end, symbol, body in rows:
             if (path, symbol) in seen:
                 continue
             record = {'path':path, 'start':int(start), 'end':int(end), 'symbol':symbol,
-                      'text':body, 'sha':self.sha}
+                      'text':body if snippets else body.splitlines()[0][:240], 'sha':self.sha}
             size = len(json.dumps(record, ensure_ascii=False).encode())
             if size > budget:
                 continue

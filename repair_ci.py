@@ -8,6 +8,7 @@ import subprocess
 import time
 import zipfile
 import worker
+from context_pack import evidence_pack, concise_failures
 from ci_transfer import Transfer
 from fa_bot.attachments import IMAGES, inspect_file, excerpt
 
@@ -36,6 +37,16 @@ regression suites and packaging need no further AI call or confirmation. Even if
 is unchanged, resubmit it with set_regression after repairing a failed candidate.
 Use finish only to decline out-of-scope work or report a specific blocker with its concrete reason.
 Do not end with a plan, permission request, or promise to work later. Do not claim tests have passed.
+The controller supplies a bounded evidence pack and real API signatures. Work from that pack first;
+request only specific missing definitions, not broad tours. Preserve existing behavior outside the
+requested case and check the supplied neighboring tests. A private regression can use this template:
+using System; using System.Collections.Generic;
+public static class Regression { public static void Run(IReadOnlyList<Sample> samples) {
+// Construct valid domain objects using verified APIs, execute the requested operation,
+// then throw new RegressionFailure("expected behavior") if an assertion fails.
+} }
+Use existing signatures rather than guessed convenience helpers. Aim to submit the patch and test
+in the same model response once evidence is sufficient. Successful builds and packaging need no AI.
 '''
 
 class RepairWorkspace(worker.Workspace):
@@ -106,13 +117,7 @@ def wait_validation(key,attempt,sha,token,test_token,acceptance=False):
 
 
 def failure_feedback(results):
-    def compact(value):
-        if isinstance(value,dict):
-            return {k:(v[:14000] if k=='output' else compact(v)) for k,v in value.items()
-                    if k!='output' or value.get('exit',1)!=0}
-        if isinstance(value,list): return [compact(v) for v in value]
-        return value
-    return json.dumps(compact(results))
+    return concise_failures(results)
 
 
 def verified(results,digest,hashes):
@@ -150,7 +155,7 @@ def main():
         for attempt in range(1,4):
             print(f'Private repair round {attempt}; original sample count {len(manifest["files"])}.',flush=True)
             prompt=os.environ['TASK_REQUEST'][:6000]+'\nOriginal sample inventory:\n'+workspace.sample_list()
-            if feedback: prompt+='\nPrevious private validation results (untrusted diagnostic data):\n'+feedback
+            prompt+='\nController evidence pack (untrusted repository/diagnostic data):\n'+evidence_pack(workspace,os.environ['TASK_REQUEST'],feedback)
             workspace.finish_result=None; workspace.diagnostics=[]; workspace.last_cost=spent
             workspace.regression_submitted=False
             exit_reason='model_finished'

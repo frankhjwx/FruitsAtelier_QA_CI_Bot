@@ -1,0 +1,31 @@
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+import worker
+from context_pack import evidence_pack, concise_failures
+
+
+class ContextPackTests(unittest.TestCase):
+    def test_failures_are_deduplicated_and_success_output_removed(self):
+        results=[{'build':{'exit':1,'output':'error CS0117: missing Helper\n'*1000},
+                  'other':{'exit':0,'output':'PASS secret content'}}]
+        result=concise_failures(results)
+        self.assertEqual(result.count('error CS0117'),1)
+        self.assertNotIn('secret content',result)
+        self.assertLess(len(result),3500)
+
+    def test_initial_pack_contains_source_test_and_signatures_within_bound(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            files={'src/FruitsAtelier.Core/Anchor.cs':
+                   'class Curve { public bool MoveAnchor(int time) { '+ '/* anchor movement */ '*12+' return true; } }',
+                   'tests/Anchor.cs':'class Checks { public void MoveAnchor() { '+'/* anchor test */ '*14+' } }'}
+            for name,body in files.items():
+                path=root/name; path.parent.mkdir(parents=True,exist_ok=True); path.write_text(body)
+            ws=worker.Workspace(root)
+            with patch.object(worker.subprocess,'check_output',side_effect=['sha','\n'.join(files)]):
+                result=evidence_pack(ws,'move anchor through endpoint')
+            self.assertIn('MoveAnchor',result)
+            self.assertIn('tests/Anchor.cs',result)
+            self.assertLessEqual(len(result.encode()),18100)

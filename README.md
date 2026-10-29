@@ -103,6 +103,14 @@ billing controls and do not include manually dispatched workflows or other apps.
 
 The development worker supports scoped literal search with pagination, bounded line-range
 reads and persistent working notes to reduce repeated queries after context compaction.
+Before generation, the harness builds a bounded context pack from likely implementation
+symbols, related tests and API signatures. Repair rounds receive the current patch,
+private regression and deduplicated failing diagnostics rather than the earlier exploration
+history. Code search returns signatures and locations; source bodies are read on demand.
+Model instructions remain stable; changing budget and workspace state are appended to the
+request. Cache reuse is measured from API usage and is not assumed in budget accounting.
+The Windows validation gate runs first; macOS waits for it and skips full regression if
+Windows rejects the candidate. All successful candidates still require both platforms.
 Private CI logs record tool names, argument hashes, result sizes and error types,
 without tool bodies or original attachment contents.
 The editing AI submits a candidate by calling `set_regression` after its source edits.

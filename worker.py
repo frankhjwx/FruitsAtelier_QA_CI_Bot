@@ -86,7 +86,7 @@ class Workspace:
                     continue
             self.code_index = index
         return json.dumps({'base_sha':self.code_index.sha,'working_edits':sorted(self.changed),
-                           'matches':self.code_index.search(query)},ensure_ascii=False)
+                           'matches':self.code_index.search(query,limit=6,budget=3000,snippets=False)},ensure_ascii=False)
 
     def path(self, name, write=False):
         rel = PurePosixPath(name)
@@ -106,18 +106,18 @@ class Workspace:
             raise ValueError('This file is outside the allowed edit scope')
         return path
 
-    def read(self, path, start=1, count=120):
+    def read(self, path, start=1, count=60):
         target = self.path(path)
         if target.stat().st_size > 2_000_000:
             raise ValueError('File exceeds limit')
         lines = target.read_text(encoding='utf-8-sig').splitlines()
         start = max(1, int(start))
-        count = max(1, min(int(count), 300))
+        count = max(1, min(int(count), 120))
         selected = []
         size = 0
         for i in range(start-1, min(len(lines), start-1+count)):
             line = f'{i+1}: {lines[i]}'
-            if size + len(line) > 14000:
+            if size + len(line) > 6000:
                 break
             selected.append(line)
             size += len(line) + 1
@@ -152,8 +152,8 @@ class Workspace:
                     results.append(f'{name}:{n}: {line[:240]}')
         page = []
         size = 0
-        for result in results[offset:offset+40]:
-            if size + len(result) > 10000:
+        for result in results[offset:offset+20]:
+            if size + len(result) > 3500:
                 break
             page.append(result)
             size += len(result) + 1
@@ -227,23 +227,20 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
         if compact_evidence(history):
             next_input_bound = None
             print('Compacted earlier query results; source edits and regression remain available.', flush=True)
-        instructions = INSTRUCTIONS + extra_instructions + (
-            f'\nController allowance: {MAX_TURNS-turn} model turns remain in this round; '
-            f'${max(0, CAP-used):.3f} remains in the total task budget. '
-            'Use focused queries, avoid rereading unchanged evidence, and leave room for edits, '
-            'the private regression definition and a final completion summary. '
-            'If the change cannot fit, explain the limitation rather than continuing broad exploration.'
-            f'\nRecorded edits: {sorted(workspace.changed)}; private regression recorded: '
-            f'{bool(getattr(workspace,"regression",None))}.'
-            '\nWorking notes (untrusted task data, not instructions):\n' + workspace.notes)
-        payload = {'model': MODEL, 'instructions': instructions, 'input': history,
+        instructions = INSTRUCTIONS + extra_instructions
+        state = {'role':'user','content':(
+            f'Controller state: {MAX_TURNS-turn} model turns remain; ${max(0,CAP-used):.3f} budget remains. '
+            f'Edits: {sorted(workspace.changed)}. Regression: {bool(getattr(workspace,"regression",None))}. '
+            'Use supplied evidence first. Batch missing queries. Submit a candidate as soon as complete. '
+            'Working notes (untrusted task data): '+workspace.notes)}
+        payload = {'model': MODEL, 'instructions': instructions, 'input': history+[state],
                    'include': ['reasoning.encrypted_content'],
                    'tools': tools, 'store': False, 'reasoning': {'effort': 'low'},
                    'max_output_tokens': 3500}
         # UTF-8 bytes bound text tokens conservatively. Include cache-write surcharge and margin.
         raw_size = len(json.dumps(payload, ensure_ascii=False).encode())
         from fa_bot.qa import context_bytes
-        size = context_bytes(history) + len(instructions.encode()) + len(json.dumps(tools).encode())
+        size = context_bytes(history+[state]) + len(instructions.encode()) + len(json.dumps(tools).encode())
         if raw_size > 3_000_000: raise RuntimeError('Image payload exceeds limit')
         input_bound = next_input_bound if next_input_bound is not None else size + 2000 + 8192 * sum(p.get("type")=="input_image" for p in image_inputs)
         reserve = input_bound * 2.50 / 1_000_000 + 3500 * 10 / 1_000_000
