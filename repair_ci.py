@@ -83,6 +83,16 @@ def wait_validation(key,attempt,sha,token,test_token,acceptance=False):
     raise TimeoutError('Validation did not finish')
 
 
+def failure_feedback(results):
+    def compact(value):
+        if isinstance(value,dict):
+            return {k:(v[-10000:] if k=='output' else compact(v)) for k,v in value.items()
+                    if k!='output' or value.get('exit',1)!=0}
+        if isinstance(value,list): return [compact(v) for v in value]
+        return value
+    return json.dumps(compact(results))
+
+
 def verified(results,digest,hashes):
     if {r.get('platform') for r in results}!={'windows','macos'}: return False
     if not all(r.get('passed') is True and r.get('test_sha256')==digest and r.get('sample_hashes')==hashes for r in results): return False
@@ -141,7 +151,7 @@ def main():
                 Path('source.json').write_text(json.dumps(receipt),encoding='utf-8')
                 print('Private regression verified; ready for public packaging.',flush=True)
                 return
-            feedback=json.dumps(results)[:30000]
+            feedback=failure_feedback(results)
             print('Regression did not pass; returning diagnostics to the AI.',flush=True)
         raise RuntimeError('Regression still fails after the bounded repair attempts; no success reported')
     finally:
