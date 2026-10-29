@@ -43,7 +43,7 @@ class DevelopmentOffer(discord.ui.View):
         self.pending = False
         self.submitted = False
         self.message = None
-        self.confirm_button = discord.ui.Button(label='Modify and test', style=discord.ButtonStyle.primary)
+        self.confirm_button = discord.ui.Button(label='Modify project and test', style=discord.ButtonStyle.primary)
         self.confirm_button.callback = self.confirm
         self.add_item(self.confirm_button)
         if sources:

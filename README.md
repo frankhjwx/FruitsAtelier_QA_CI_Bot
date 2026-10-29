@@ -43,7 +43,7 @@ itself, and eligible owner DMs. Slash
 commands are registered per guild. Messages in any channel, including `feature-requests` and `bug-reports`, require
 an explicit mention or a reply to Papaya. Unaddressed conversation is ignored.
 QA identifies feature proposals and bug-fix intent in the same response call.
-When appropriate, it offers a **Modify and test** button for 15 minutes. Only the
+When appropriate, it offers a **Modify project and test** button for 15 minutes. Only the
 original requester in the same channel can confirm; code editing starts only
 after confirmation. Ordinary questions show no development button. Large subsystem requests and open-ended prototypes are declined by the model
 without a development proposal; users are asked to narrow the scope. Concurrent
