@@ -139,10 +139,13 @@ def main():
     token=os.environ['GH_TOKEN']; bot_token=os.environ['BOT_ACTIONS_TOKEN']
     pending=worker.request_json(f'https://api.github.com/repos/{worker.REPO}/pulls?state=open&base=dev&head=frankhjwx:{branch}',token)
     acceptance=os.getenv('FA_ACCEPTANCE')=='true'
-    if pending and not acceptance: raise RuntimeError('The shared branch has a PR awaiting review')
+    benchmark=os.getenv('FA_BENCHMARK')=='true'
+    if acceptance and benchmark: raise RuntimeError('Choose synthetic acceptance or real benchmark, not both')
+    if pending and not (acceptance or benchmark): raise RuntimeError('The shared branch has a PR awaiting review')
     base=subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=True).strip()
     transfer=Transfer(os.environ['TRANSFER_URL'],os.environ['TRANSFER_FINGERPRINT'],key,os.environ['TRANSFER_TOKEN'])
     samples=Path(os.environ['RUNNER_TEMP'])/('fa-samples-'+key)
+    benchmark_verified=False
     try:
         manifest=transfer.download(samples,minimum_remaining=5400)
         if acceptance:
@@ -188,7 +191,8 @@ def main():
             digest=hashlib.sha256(workspace.regression['code'].encode()).hexdigest()
             hashes=[f['sha256'] for f in manifest['files']]
             if verified(results,digest,hashes):
-                if acceptance:
+                if acceptance or benchmark:
+                    benchmark_verified=True
                     Path('acceptance.json').write_text(json.dumps({'verified':True,'attempts':attempt,'sample_count':len(hashes),'cost':spent}),encoding='utf-8')
                     print(f'Acceptance passed after {attempt} rounds; no public source was changed.',flush=True)
                     return
@@ -202,6 +206,14 @@ def main():
             print('Regression did not pass; returning diagnostics to the AI.',flush=True)
         raise RuntimeError('Regression still fails after the bounded repair attempts; no success reported')
     finally:
+        if benchmark:
+            ws=locals().get('workspace')
+            Path('benchmark-result.json').write_text(json.dumps({
+                'job_id':key,'base':base,'verified':benchmark_verified,
+                'cost':getattr(ws,'last_cost',0),'model_calls':getattr(ws,'model_turns',0),
+                'usage':getattr(ws,'usage_events',[]),
+                'exit_reason':locals().get('exit_reason','setup_failed'),
+                'attempts':locals().get('attempt',0)}),encoding='utf-8')
         shutil.rmtree(samples,ignore_errors=True)
 
 if __name__=='__main__': main()

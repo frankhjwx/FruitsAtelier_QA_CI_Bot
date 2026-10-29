@@ -81,6 +81,13 @@ download or extract them.
 
 ## Budget and execution boundaries
 
+Maintainers can set `benchmark=true` on the development workflow and supply a
+pinned `source_commit` to evaluate a real task without publishing editor source,
+creating a PR or packaging. This mode runs the normal private regression gates
+and keeps the same model, scope checks and $0.50 cap. Its private result artifact
+contains verification status and usage metadata, not source or user attachments.
+Run benchmark tasks sequentially against the same commit for comparable results.
+
 QA uses `gpt-6-luna`; development uses `gpt-6.1-sol`. Standard processing is used.
 The current price assumptions are $0.10/$0.50 and $2/$10 per million input/output
 tokens respectively. Conservative reservations include a cache-write margin.

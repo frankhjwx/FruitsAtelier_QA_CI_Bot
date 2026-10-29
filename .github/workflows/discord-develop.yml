@@ -4,6 +4,14 @@ run-name: FA task ${{ inputs.job_id }}
 on:
   workflow_dispatch:
     inputs:
+      benchmark:
+        description: Real task evaluation without source publication or packaging
+        type: boolean
+        default: false
+      source_commit:
+        description: Pinned editor commit for benchmark comparison
+        type: string
+        default: ''
       acceptance:
         description: Maintainer synthetic acceptance without publication
         type: boolean
@@ -56,6 +64,8 @@ jobs:
         env:
           TASK_BRANCH: ${{ inputs.branch }}
           FA_ACCEPTANCE: ${{ inputs.acceptance }}
+          FA_BENCHMARK: ${{ inputs.benchmark }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
           JOB_ID: ${{ inputs.job_id }}
         with:
           script: |
@@ -64,6 +74,13 @@ jobs:
               throw new Error('Invalid Discord task identity');
             }
             let ref;
+            if (process.env.FA_BENCHMARK === 'true') {
+              const sha = process.env.SOURCE_COMMIT;
+              if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error('Benchmark requires a pinned commit');
+              await github.rest.repos.getCommit({owner:'frankhjwx',repo:'FruitsAtelier',ref:sha});
+              core.setOutput('commit',sha);
+              return;
+            }
             try {
               ref = await github.rest.git.getRef({owner: 'frankhjwx', repo: 'FruitsAtelier', ref: `heads/${branch}`});
             } catch (error) {
@@ -91,14 +108,24 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.FA_OPENAI_CI_KEY }}
           GH_TOKEN: ${{ secrets.FA_SOURCE_TOKEN }}
           FA_ACCEPTANCE: ${{ inputs.acceptance }}
+          FA_BENCHMARK: ${{ inputs.benchmark }}
           JOB_ID: ${{ inputs.job_id }}
           TASK_BRANCH: ${{ inputs.branch }}
           TASK_REQUEST: ${{ inputs.request }}
           SOURCE_ROOT: ${{ github.workspace }}/source
         run: python controller/repair_ci.py
 
+      - name: Save benchmark cost and verification result
+        if: ${{ always() && inputs.benchmark }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-${{ inputs.job_id }}
+          path: benchmark-result.json
+          retention-days: 30
+          if-no-files-found: warn
+
       - uses: actions/upload-artifact@v4
-        if: ${{ !inputs.acceptance }}
+        if: ${{ !inputs.acceptance && !inputs.benchmark }}
         with:
           name: source-${{ inputs.job_id }}
           path: source.json
@@ -107,7 +134,7 @@ jobs:
           if-no-files-found: error
 
       - name: Dispatch and wait for public editor package
-        if: ${{ !inputs.acceptance }}
+        if: ${{ !inputs.acceptance && !inputs.benchmark }}
         env:
           GH_TOKEN: ${{ secrets.FA_SOURCE_TOKEN }}
           FA_ACCEPTANCE: ${{ inputs.acceptance }}

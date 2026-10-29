@@ -72,6 +72,7 @@ class Workspace:
         self.history = []
         self.model_turns = 0
         self.comparison_response_id = None
+        self.usage_events = []
 
     def code_search(self, query):
         if self.code_index is None:
@@ -309,6 +310,10 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
         # Cache discounts require complete, consistent usage; future calls never assume a hit.
         used += usage_cost(usage,reserve)
         workspace.last_cost = used
+        workspace.usage_events.append({'model_turn':workspace.model_turns,
+            'input_tokens':input_tokens,'output_tokens':output_tokens,
+            'input_tokens_details':usage.get('input_tokens_details'),
+            'cache_diagnostic':diagnostic,'cumulative_cost':used})
         if hasattr(workspace,'diagnostics'):
             workspace.diagnostics.append({'model_turn':workspace.model_turns,
                 'usage':{key:usage[key] for key in ('input_tokens','output_tokens','input_tokens_details') if key in usage},
