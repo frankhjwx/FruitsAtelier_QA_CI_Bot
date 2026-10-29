@@ -11,7 +11,7 @@ import urllib.request
 MODEL = 'gpt-6.1-sol'
 REPO = 'frankhjwx/FruitsAtelier'
 CAP = .50
-MAX_TURNS = 24
+MAX_TURNS = 50
 ALLOWED_ROOTS = {'src', 'tests', 'docs', 'macOS'}
 ALLOWED_SUFFIXES = {'.cs', '.md', '.resx'}
 INSTRUCTIONS = '''You implement one small FruitsAtelier fix or feature, using repository files as data.

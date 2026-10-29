@@ -262,7 +262,7 @@ hashes and test identity before publishing source and requesting a public packag
 This does not establish manual GUI, audio perception or device-specific behavior.
 Unsupported or unreproduced cases are reported as unverified, never repaired.
 
-Each editing round permits up to 24 model turns, with remaining turns and task budget
+Each editing round permits up to 50 model turns, with remaining turns and task budget
 included in the controller instructions. The shared $0.50 task cap still applies.
 Failed validation returns private diagnostics to the AI for up to three rounds
 within the same $0.50 task budget and workflow timeout. No raw sample, private test
