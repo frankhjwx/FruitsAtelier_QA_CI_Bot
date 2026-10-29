@@ -93,6 +93,7 @@ class Bot(discord.Client):
             if uploads:
                 await self.attachments.capture(self.http_session, user, channel, request_id, uploads)
                 ids.insert(0, request_id)
+                ids = self.attachments.available_ids(user, channel, ids)
             if ids:
                 parts = await asyncio.to_thread(self.attachments.read, user, channel, ids)
             text, cost = await answer(self.http_session, self.api_key, self.knowledge, question, context=context, attachments=parts)
@@ -249,14 +250,21 @@ class Bot(discord.Client):
             await interaction.followup.send(await self.start_job(interaction, request))
 
         @self.tree.command(name='revise', description='Continue your previous development task')
-        async def revise(interaction: discord.Interaction, feedback: str, task_id: str | None = None):
+        async def revise(interaction: discord.Interaction, feedback: str, task_id: str | None = None, attachment: discord.Attachment | None = None):
             await interaction.response.defer(thinking=True)
             if task_id is None:
                 latest = self.store.latest_job()
                 if not latest:
                     raise ValueError('No development task is available to revise.')
                 task_id = latest['id']
-            await interaction.followup.send(await self.start_job(interaction, feedback, task_id.strip()))
+            if attachment:
+                if not self.eligible(interaction.user.id, interaction.guild_id):
+                    raise ValueError('This server is not enabled.')
+                await self.attachments.capture(self.http_session, interaction.user.id, interaction.channel_id, interaction.id, [attachment])
+                status = await self.start_job(interaction, feedback, task_id.strip(), attachment_ids=(interaction.id,))
+            else:
+                status = await self.start_job(interaction, feedback, task_id.strip())
+            await interaction.followup.send(status)
 
         @self.tree.command(name='template', description='Question and feature request templates')
         async def template(interaction: discord.Interaction):

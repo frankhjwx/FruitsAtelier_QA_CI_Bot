@@ -184,6 +184,10 @@ class AttachmentStore:
                 shutil.rmtree(folder)
                 raise
 
+    def available_ids(self, owner, channel, ids):
+        return [mid for mid in ids if any(not f.is_symlink() and time.time()-int(f.name.split('_')[0])/1000 < TTL
+                for f in self.root.glob(f'*_{int(owner)}_{int(channel)}_{int(mid)}'))]
+
     def read(self, owner, channel, ids):
         parts = []
         text_left = 22000

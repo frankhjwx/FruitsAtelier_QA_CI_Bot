@@ -237,7 +237,7 @@ This is a prompt-level policy, not a keyword blacklist or code-based topic filte
 ## Sample-backed private regression
 
 Confirmation binds the current and referenced attachment IDs to the task. `/revise`
-reuses these IDs; it requests fresh uploads if samples expired or have less than
+reuses these IDs and accepts an optional replacement attachment; it requests fresh uploads if samples expired or have less than
 two hours remaining. Transfer copies retain the earliest original upload time.
 The hourly cleanup service also removes `/var/lib/fruitsatelier-discord/ci-transfers`.
 
