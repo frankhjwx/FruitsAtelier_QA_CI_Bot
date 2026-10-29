@@ -5,6 +5,21 @@ import worker
 
 
 class UsageBudgetTests(unittest.TestCase):
+    def test_can_finish_after_twelve_queries_within_budget(self):
+        with tempfile.TemporaryDirectory() as folder:
+            ws = worker.Workspace(folder)
+            responses = [{'usage':{'input_tokens':100,'output_tokens':10},
+                          'output':[{'type':'function_call','name':'search','call_id':str(i),
+                                     'arguments':'{"query":"anchor"}'}]} for i in range(12)]
+            responses.append({'usage':{'input_tokens':100,'output_tokens':10},'status':'completed',
+                              'output':[{'type':'message','content':[{'type':'output_text','text':'Finished.'}]}]})
+            with patch.object(worker,'request_json',side_effect=responses) as request, patch.object(ws,'search',return_value='Focused result'):
+                summary, cost = worker.generate(ws,'Inspect anchor behavior','fake')
+            self.assertEqual(summary,'Finished.')
+            self.assertEqual(request.call_count,13)
+            self.assertIn('12 model turns remain', request.call_args.args[3]['instructions'])
+            self.assertLess(cost,worker.CAP)
+
     def test_large_read_batch_is_compacted_before_next_model_call(self):
         with tempfile.TemporaryDirectory() as folder:
             ws = worker.Workspace(folder)

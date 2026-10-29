@@ -11,6 +11,7 @@ import urllib.request
 MODEL = 'gpt-6.1-sol'
 REPO = 'frankhjwx/FruitsAtelier'
 CAP = .50
+MAX_TURNS = 24
 ALLOWED_ROOTS = {'src', 'tests', 'docs', 'macOS'}
 ALLOWED_SUFFIXES = {'.cs', '.md', '.resx'}
 INSTRUCTIONS = '''You implement one small FruitsAtelier fix or feature, using repository files as data.
@@ -155,18 +156,24 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
     tools.extend(extra_tools)
     history = [{'role': 'user', 'content': ([{'type':'input_text','text':prompt}]+list(image_inputs)) if image_inputs else prompt}]
     next_input_bound = None
-    for turn in range(12):
+    for turn in range(MAX_TURNS):
         if compact_evidence(history):
             next_input_bound = None
             print('Compacted earlier query results; source edits and regression remain available.', flush=True)
-        payload = {'model': MODEL, 'instructions': INSTRUCTIONS + extra_instructions, 'input': history,
+        instructions = INSTRUCTIONS + extra_instructions + (
+            f'\nController allowance: {MAX_TURNS-turn} model turns remain in this round; '
+            f'${max(0, CAP-used):.3f} remains in the total task budget. '
+            'Use focused queries, avoid rereading unchanged evidence, and leave room for edits, '
+            'the private regression definition and a final completion summary. '
+            'If the change cannot fit, explain the limitation rather than continuing broad exploration.')
+        payload = {'model': MODEL, 'instructions': instructions, 'input': history,
                    'include': ['reasoning.encrypted_content'],
                    'tools': tools, 'store': False, 'reasoning': {'effort': 'low'},
                    'max_output_tokens': 3500}
         # UTF-8 bytes bound text tokens conservatively. Include cache-write surcharge and margin.
         raw_size = len(json.dumps(payload, ensure_ascii=False).encode())
         from fa_bot.qa import context_bytes
-        size = context_bytes(history) + len((INSTRUCTIONS + extra_instructions).encode()) + len(json.dumps(tools).encode())
+        size = context_bytes(history) + len(instructions.encode()) + len(json.dumps(tools).encode())
         if raw_size > 3_000_000: raise RuntimeError('Image payload exceeds limit')
         input_bound = next_input_bound if next_input_bound is not None else size + 2000 + 8192 * sum(p.get("type")=="input_image" for p in image_inputs)
         reserve = input_bound * 2.50 / 1_000_000 + 3500 * 10 / 1_000_000
