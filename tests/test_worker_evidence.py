@@ -14,8 +14,9 @@ class WorkerEvidenceTests(unittest.TestCase):
             (root/'src').mkdir()
             (root/'docs/noise.md').write_text('anchor unrelated\n'*80, encoding='utf-8')
             (root/'src/Editor.cs').write_text('MoveAnchor endpoint\n'*45 + 'unique tail\n', encoding='utf-8')
+            (root/'src/Other.cs').write_text('unrelated', encoding='utf-8')
             workspace = worker.Workspace(root)
-            with patch.object(worker.subprocess,'check_output',return_value='docs/noise.md\nsrc/Editor.cs\n'):
+            with patch.object(worker.subprocess,'check_output',return_value='docs/noise.md\nsrc/Editor.cs\nsrc/Other.cs\n'):
                 first = workspace.search('MoveAnchor endpoint', 'src')
                 second = workspace.search('MoveAnchor endpoint', 'src', 41)
                 self.assertIn('45 matches; next start=41',first)

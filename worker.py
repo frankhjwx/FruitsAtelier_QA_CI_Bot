@@ -116,14 +116,14 @@ class Workspace:
             if path and name != path and not name.startswith(path.rstrip('/') + '/'):
                 continue
             try:
-                path = self.path(name)
+                target = self.path(name)
             except ValueError:
                 continue
-            if path.stat().st_size > 2_000_000:
+            if target.stat().st_size > 2_000_000:
                 continue
             if query in name.lower():
                 results.append(name)
-            for n, line in enumerate(path.read_text(encoding='utf-8-sig', errors='replace').splitlines(), 1):
+            for n, line in enumerate(target.read_text(encoding='utf-8-sig', errors='replace').splitlines(), 1):
                 if query in line.lower():
                     results.append(f'{name}:{n}: {line[:240]}')
         page = []
