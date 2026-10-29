@@ -255,6 +255,9 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
         used += ((input_tokens * 2.50 + output_tokens * 10) / 1_000_000) if measured else reserve
         next_input_bound = input_tokens + output_tokens + 2000 if measured else None
         print(f'Model turn {turn+1}; conservative usage cost ${used:.3f}', flush=True)
+        print('Usage diagnostic: ' + json.dumps({'turn':turn+1,'input_tokens':input_tokens,
+              'output_tokens':output_tokens,'cached_input_tokens':usage.get('input_tokens_details',{}).get('cached_tokens'),
+              'cumulative_budget_cost':round(used,8)}), flush=True)
         output = response.get('output', [])
         history.extend(output)
         calls = [x for x in output if x.get('type') == 'function_call']
