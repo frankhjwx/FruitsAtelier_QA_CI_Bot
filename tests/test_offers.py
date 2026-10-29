@@ -71,7 +71,8 @@ class OfferTests(unittest.IsolatedAsyncioTestCase):
             try:
                 bot.admit(1)
                 event=NS(id=123456789012345,user=NS(id=1),channel_id=2,guild_id=1554882915945414726)
-                result=await bot.start_job(event,'Add the requested feature.')
+                bot.knowledge.sha='a'*40
+                result=await bot.start_job(event,'Add the requested feature.', localization={'query':'selection time', 'direction':'Inspect selection', 'commit':'a'*40, 'locations':[{'path':'src/Test.cs','line':1}]})
                 self.assertIn('accepted',result)
                 bot.github.dispatch.assert_awaited_once()
             finally:

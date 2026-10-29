@@ -8,7 +8,7 @@ import time
 import aiohttp
 from fa_bot.config import secret
 from fa_bot.github import GitHub
-from fa_bot.handoff import encode
+from fa_bot.handoff import encode, ready
 from fa_bot.knowledge import Knowledge
 from fa_bot.qa import answer
 from fa_bot.store import Store
@@ -16,9 +16,10 @@ from fa_bot.store import Store
 
 async def prepare(session, key, knowledge, request):
     reply, cost = await answer(session, key, knowledge, request)
-    return {'accepted': bool(reply.change_request), 'qa_cost': cost,
+    accepted = bool(reply.change_request) and ready(reply.localization)
+    return {'accepted': accepted, 'qa_cost': cost,
             'answer': reply.text, 'source_commit': knowledge.sha,
-            'request': encode(reply.change_request, reply.localization) if reply.change_request else None}
+            'request': encode(reply.change_request, reply.localization) if accepted else None}
 
 
 async def main(args):

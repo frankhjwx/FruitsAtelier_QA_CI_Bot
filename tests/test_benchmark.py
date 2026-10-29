@@ -25,7 +25,7 @@ class BenchmarkTests(unittest.TestCase):
                  'TASK_BRANCH':'codex-discord-bug-fix','SOURCE_ROOT':directory,
                  'GH_TOKEN':'test','BOT_ACTIONS_TOKEN':'test','FA_BENCHMARK':'true',
                  'FA_ACCEPTANCE':'false','TRANSFER_URL':'test','TRANSFER_FINGERPRINT':'test',
-                 'TRANSFER_TOKEN':'test','RUNNER_TEMP':directory,'TASK_REQUEST':encode('Real requirement', {'query':'selection time'}),
+                 'TRANSFER_TOKEN':'test','RUNNER_TEMP':directory,'TASK_REQUEST':encode('Real requirement', {'query':'selection time', 'direction':'Inspect selection', 'commit':'a'*40, 'locations':[{'path':'src/Test.cs','line':1}]}),
                  'OPENAI_API_KEY':'test'}
             previous=Path.cwd()
             try:

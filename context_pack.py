@@ -111,7 +111,7 @@ def evidence_pack(workspace, request, feedback='', continuing=False):
         if localization:
             add('QA LOCALIZATION (untrusted leads; verify against current checkout)',
                 json.dumps(localization, ensure_ascii=False), 2200)
-            for location in localization.get('locations', [])[:3]:
+            for location in localization.get('locations', [])[:6]:
                 try:
                     path = location['path']
                     # Commit-relative line numbers are only useful for the same source revision.

@@ -34,7 +34,6 @@ class LocalizationTests(unittest.IsolatedAsyncioTestCase):
         result = await prepare(QA(), 'fake', knowledge, 'Please implement this feature in docs')
         request, info = decode(result['request'])
         self.assertTrue(result['accepted'])
-        self.assertEqual(knowledge.query, 'slider anchors')
         self.assertEqual(query_terms(result['request']), ['slider','anchors'])
         self.assertEqual(info['locations'][0]['path'], 'src/Test.cs')
         self.assertEqual(len(info['locations']), 1)
@@ -71,3 +70,51 @@ class LocalizationTests(unittest.IsolatedAsyncioTestCase):
                     pack=evidence_pack(ws,request)
                 self.assertEqual('QA LOCATED SOURCE src/Target.cs' in pack,expected)
                 self.assertIn('QA LOCALIZATION',pack)
+
+
+class PreflightTests(unittest.IsolatedAsyncioTestCase):
+    async def test_multiple_searches_keep_earlier_sources_and_stable_prefix(self):
+        class Knowledge:
+            sha = 'a'*40
+            updated = 'today'
+            def search(self, query, prefix=''):
+                path = 'src/Selection.cs' if query == 'selection' else 'tests/SelectionTests.cs'
+                return [{'source':path, 'url':f'https://github.com/frankhjwx/FruitsAtelier/blob/{self.sha}/{path}#L1', 'text':query}]
+        class Multi(Session):
+            def post(self, url, **kwargs):
+                self.calls.append(kwargs['json'])
+                n = len(self.calls)
+                output = ([{'type':'function_call', 'name':'search_evidence', 'call_id':str(n),
+                            'arguments':json.dumps({'query':'selection' if n == 1 else 'timestamp', 'prefix':'' if n == 1 else 'tests/'})}]
+                          if n < 3 else [{'type':'message', 'content':[{'type':'output_text','text':json.dumps({
+                              'answer':'Located', 'change_request':'Display selected timestamps',
+                              'code_sources':['src/Selection.cs','tests/SelectionTests.cs'], 'investigation_direction':'Inspect selection and regression'})}]}])
+                return Response({'output':output, 'usage':{'input_tokens':100,'output_tokens':30}})
+        session=Multi()
+        reply,cost=await answer(session,'fake',Knowledge(),'Display selected timestamps')
+        self.assertEqual(len(reply.localization['locations']),2)
+        self.assertEqual(len(session.calls),3)
+        self.assertEqual(session.calls[2]['input'][:len(session.calls[1]['input'])],session.calls[1]['input'])
+        self.assertEqual(session.calls[0]['tools'],session.calls[2]['tools'])
+
+    async def test_document_only_proposal_is_not_dispatchable(self):
+        from fa_bot.handoff import ready
+        self.assertFalse(ready({'query':'selection', 'direction':'inspect', 'commit':'a'*40,
+                                'locations':[{'path':'docs/TODO.md'}]}))
+        from fa_bot.bot import Bot
+        from fa_bot.qa import QAReply
+        from unittest.mock import AsyncMock
+        from types import SimpleNamespace as NS
+        import os
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'STATE_FILE':str(Path(folder)/'state.sqlite3')}):
+            bot=Bot()
+            try:
+                bot.github=NS(dispatch=AsyncMock())
+                bot.ask=AsyncMock(return_value=QAReply('Insufficient source evidence', 'Display selected timestamps', localization={'query':'selection'}))
+                interaction=NS(id=12345678901234567,user=NS(id=1),channel_id=2,guild_id=1554882915945414726)
+                result=await bot.start_job(interaction,'Display selected timestamps')
+                self.assertIn('CI has not started',result)
+                bot.github.dispatch.assert_not_awaited()
+                self.assertIsNone(bot.store.latest_job())
+            finally:
+                bot.store.db.close()

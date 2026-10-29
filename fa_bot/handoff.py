@@ -21,7 +21,7 @@ def locator(query, direction, sources, evidence, sha):
         selected.append({'path': path[:240], 'line': int(line[1]) if line else 1,
                          'source': item['source'][:300]})
     return {'query': str(query)[:200], 'direction': str(direction)[:400],
-            'commit': sha, 'locations': selected[:3]}
+            'commit': sha, 'locations': selected[:6]}
 
 
 def encode(request, localization=None):
@@ -38,3 +38,15 @@ def decode(value):
     except (ValueError, AttributeError):
         pass
     return value, None
+
+
+def ready(localization):
+    """A documentation-only lookup cannot authorize a paid repair."""
+    return (isinstance(localization, dict)
+            and bool(localization.get('query'))
+            and bool(localization.get('direction'))
+            and bool(re.fullmatch(r'[a-f0-9]{40}', str(localization.get('commit', ''))))
+            and any(isinstance(item, dict) and isinstance(item.get('path'), str)
+                    and item['path'].startswith(('src/', 'macOS/src/'))
+                    and item['path'].endswith('.cs') and '..' not in item['path'].split('/')
+                    for item in localization.get('locations', [])))

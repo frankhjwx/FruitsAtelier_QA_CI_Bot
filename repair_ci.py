@@ -10,7 +10,7 @@ import zipfile
 import worker
 from context_pack import evidence_pack, concise_failures
 from ci_transfer import Transfer
-from fa_bot.handoff import decode
+from fa_bot.handoff import decode, ready
 from fa_bot.attachments import IMAGES, inspect_file, excerpt
 
 REPAIR_INSTRUCTIONS='''
@@ -159,8 +159,8 @@ def main():
                 images.extend(inspect_file(samples/file['file'],file['name']))
         spent=0; feedback=''; summary=''
         task_request, localization = decode(os.environ['TASK_REQUEST'])
-        if benchmark and not localization:
-            raise RuntimeError('Real benchmarks require QA localization before dispatch')
+        if not acceptance and not ready(localization):
+            raise RuntimeError('Repairs require QA implementation localization before dispatch')
         for attempt in range(1,4):
             print(f'Private repair round {attempt}; original sample count {len(manifest["files"])}.',flush=True)
             continuing=bool(workspace.history)

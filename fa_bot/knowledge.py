@@ -81,7 +81,12 @@ class Knowledge:
                     raise RuntimeError('Knowledge archive exceeds size limit')
         await asyncio.to_thread(self.load, bytes(archive), sha, issues)
 
-    def search(self, query, limit=7):
+    def search(self, query, limit=7, prefix=""):
+        if prefix:
+            rows = self.code_index.search(query, limit=5, budget=10000, prefix=prefix) if self.code_index else []
+            return [{"source": f'{r["path"]} ({r["symbol"]})',
+                     "url": f'https://github.com/{SOURCE_REPO}/blob/{r["sha"]}/{r["path"]}#L{r["start"]}',
+                     "text": r["text"]} for r in rows]
         query_terms = set(terms(query))
         scores = []
         for path, url, body, counts in self.chunks:

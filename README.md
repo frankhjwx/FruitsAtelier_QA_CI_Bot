@@ -134,7 +134,7 @@ QA first checks whether the requested behavior is already supported. Its instruc
 development proposals for an already-satisfied goal, while retaining concrete defect reports and
 distinguishing dev support from released behavior. This is a model judgment grounded in evidence.
 Confirmed proposals carry QA's technical search query, investigation direction, evidence commit,
-and up to three source locations. Locations must come from the evidence returned to QA.
+and up to six source locations. Locations must come from the evidence returned to QA.
 CI prioritizes these leads and rereads source from its checkout; line-based excerpts are used only
 when the evidence commit matches. Follow-up requests retain the leads as untrusted context.
 The evidence limit excludes opaque encrypted reasoning, which remains in requests and
@@ -181,7 +181,13 @@ and line ranges. Identifier splitting supports both exact symbols and component
 words. This is structural and lexical retrieval, not vector embeddings or a
 compiler-resolved call graph; it makes no additional model calls.
 QA searches source and test symbols using the model's technical query, without appending the raw
-user request to that query. Ordinary QA and localization share the same two model calls.
+user request to that query. QA can follow symbols across up to six searches (seven model calls), with a 150-second
+wall-clock limit and a $0.02 reservation. Ordinary questions can finish after one search.
+Follow-up searches can target a source or test path; prior evidence and tool definitions
+remain in the conversation. All development entrances, including `/develop` and `/revise`,
+require implementation-code localization before reserving CI budget or dispatching.
+Documentation-only or inconclusive lookups remain QA-only. Revisions rerun QA; confirmation
+reuses current localization. This gate establishes source leads, not reproduction or correctness.
 
 The server saves `code-index.sqlite3` beside the state database. Its commit SHA
 and index format must match before reuse; a different revision triggers rebuilding

@@ -8,7 +8,7 @@ from unittest.mock import patch, AsyncMock
 
 from fa_bot.bot import Bot
 from fa_bot.github import GitHub
-from fa_bot.qa import answer
+from fa_bot.qa import answer, QAReply
 from test_boundaries import worker
 
 
@@ -158,12 +158,13 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
                     await bot.start_job(interaction, 'Add a small clarification', 'old')
                 bot.github.dispatch.assert_not_awaited()
                 bot.cooldowns.clear()
+                bot.ask = AsyncMock(return_value=QAReply('Located', 'Original request follow up', localization={'query':'selection time', 'direction':'Inspect selection', 'commit':'a'*40, 'locations':[{'path':'src/Test.cs','line':1}]}))
                 result = await bot.start_job(interaction, '  Retry  ', 'latest')
                 self.assertIn('accepted', result)
                 args = bot.github.dispatch.call_args.args
                 self.assertEqual(args[2], 'codex-discord-bug-fix')
                 self.assertIn('Original request', args[1])
-                self.assertIn('Follow-up:\nRetry', args[1])
+                self.assertIn('Follow-up:\nRetry', json.loads(args[1])['request'])
             finally:
                 bot.store.db.close()
 
@@ -205,6 +206,7 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
                 guild_id = 1479878482438918297
                 channel_id = 2
                 user = type('User', (), {'id': 3})()
+            bot.ask = AsyncMock(return_value=QAReply('Located', 'Change something small', localization={'query':'selection time', 'direction':'Inspect selection', 'commit':'a'*40, 'locations':[{'path':'src/Test.cs','line':1}]}))
             result = await bot.start_job(Interaction(), 'Change something small')
             self.assertIn('accepted', result)
             self.assertEqual(bot.store.job(str(Interaction.id))['status'], 'dispatching')

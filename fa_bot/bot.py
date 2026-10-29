@@ -17,7 +17,7 @@ from .github import GitHub
 from .knowledge import Knowledge
 from .messages import linked_message, qa_message, action_message, notify_owner
 from .qa import APIError, QAReply, answer
-from .handoff import encode, decode
+from .handoff import encode, decode, ready
 from .store import Store
 from .reviews import PackageReview, poll_reviews
 
@@ -84,8 +84,11 @@ class Bot(discord.Client):
         if len(self.cooldowns) > 5000:
             self.cooldowns = {k: v for k, v in self.cooldowns.items() if now - v < 60}
 
-    async def ask(self, user, request_id, question, context=(), uploads=(), channel=None):
-        self.admit(user)
+    async def ask(self, user, request_id, question, context=(), uploads=(), channel=None, preflight=False):
+        if not preflight:
+            self.admit(user)
+        elif self.busy >= 3:
+            raise ValueError("The bot is busy; please retry shortly.")
         self.busy += 1
         try:
             self.store.reserve(str(request_id), 'qa', .02, owner=user)
@@ -217,9 +220,17 @@ class Bot(discord.Client):
                 raise ValueError('This task belongs to a retired repair branch. Please submit a new request.')
             original, localization = decode(old['request'])
             request = f'Original request:\n{original[:2500]}\n\nFollow-up:\n{request}'[:6000]
-        request = encode(request, localization)
         if previous and not attachment_ids:
             attachment_ids = self.store.job_attachments(previous)
+        if previous or not ready(localization) or localization.get('commit') != self.knowledge.sha:
+            context = [{'role':'user', 'content':'Use the attached evidence for this confirmed development request.',
+                        'attachment_id': item} for item in attachment_ids]
+            reply = await self.ask(interaction.user.id, 'preflight-'+key, request,
+                                   context=context, channel=interaction.channel_id, preflight=True)
+            if not reply.change_request or not ready(reply.localization):
+                return reply.text + '\n\nCI has not started: QA must locate relevant implementation code first.'
+            localization = reply.localization
+        request = encode(request, localization)
         transfer_token = await asyncio.to_thread(create_transfer, interaction.user.id, interaction.channel_id, key, attachment_ids)
         self.store.reserve(key, 'dev', JOB_CAP)
         self.store.add_job(key, interaction.user.id, interaction.channel_id, branch, request)
