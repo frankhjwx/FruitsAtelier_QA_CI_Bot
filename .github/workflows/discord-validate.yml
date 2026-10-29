@@ -1,0 +1,78 @@
+name: Private sample validation
+run-name: FA validation ${{ inputs.job_id }}.${{ inputs.attempt }}
+on:
+  workflow_dispatch:
+    inputs:
+      acceptance:
+        description: Maintainer synthetic acceptance without publication
+        type: boolean
+        default: false
+      job_id:
+        required: true
+        type: string
+      attempt:
+        required: true
+        type: string
+      commit:
+        required: true
+        type: string
+      transfer_token:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            runner: windows-2022
+            global: source/global.json
+          - platform: macos
+            runner: macos-15
+            global: source/macOS/global.json
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: controller
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: frankhjwx/FruitsAtelier
+          ref: ${{ inputs.commit }}
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ${{ matrix.global }}
+      - name: Run private baseline and regression checks
+        env:
+          TRANSFER_URL: ${{ vars.FA_TRANSFER_URL }}
+          TRANSFER_FINGERPRINT: ${{ vars.FA_TRANSFER_FINGERPRINT }}
+          TRANSFER_TOKEN: ${{ inputs.transfer_token }}
+          FA_ACCEPTANCE: ${{ inputs.acceptance }}
+          JOB_ID: ${{ inputs.job_id }}
+          ATTEMPT: ${{ inputs.attempt }}
+          VALIDATION_PLATFORM: ${{ matrix.platform }}
+          SOURCE_ROOT: ${{ github.workspace }}/source
+        run: python controller/validate_private.py
+      - name: Remove private runner copies
+        if: always()
+        shell: python
+        env:
+          FA_ACCEPTANCE: ${{ inputs.acceptance }}
+          JOB_ID: ${{ inputs.job_id }}
+          ATTEMPT: ${{ inputs.attempt }}
+        run: |
+          import os, pathlib, re, shutil
+          key, attempt = os.environ['JOB_ID'], os.environ['ATTEMPT']
+          if re.fullmatch(r'\d{15,22}', key) and attempt in ('1','2','3'):
+              shutil.rmtree(pathlib.Path(os.environ['RUNNER_TEMP']) / ('fa-private-'+key+'-'+attempt), ignore_errors=True)

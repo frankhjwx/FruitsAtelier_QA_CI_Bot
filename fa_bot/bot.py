@@ -11,10 +11,11 @@ from discord import app_commands
 
 from .conversation import reply_context
 from .attachments import AttachmentStore
+from .transfer import create_transfer, start_transfer_server
 from .config import GUILDS, OWNER, JOB_CAP, WORK_BRANCH, secret
 from .github import GitHub
 from .knowledge import Knowledge
-from .messages import linked_message, qa_message, action_message
+from .messages import linked_message, qa_message, action_message, notify_owner
 from .qa import APIError, QAReply, answer
 from .store import Store
 from .reviews import PackageReview, poll_reviews
@@ -49,6 +50,7 @@ class Bot(discord.Client):
                 await self.tree.sync(guild=discord.Object(id=guild))
             except discord.Forbidden:
                 LOG.warning('Command registration unavailable for guild %s; check the bot invitation', guild)
+        self.transfer_server = await start_transfer_server()
         latest = self.store.latest_job()
         if latest and latest['status'] == 'success' and self.store.review(latest['id']):
             self.add_view(PackageReview(self, latest['id']))
@@ -56,6 +58,8 @@ class Bot(discord.Client):
                         asyncio.create_task(poll_reviews(self))]
 
     async def close(self):
+        if getattr(self, 'transfer_server', None):
+            await self.transfer_server.cleanup()
         for task in self.workers:
             task.cancel()
         for task in self.workers:
@@ -93,7 +97,7 @@ class Bot(discord.Client):
                 parts = await asyncio.to_thread(self.attachments.read, user, channel, ids)
             text, cost = await answer(self.http_session, self.api_key, self.knowledge, question, context=context, attachments=parts)
             self.store.settle(str(request_id), cost)
-            return text
+            return QAReply(text.text, text.change_request, tuple(ids[:3]))
         except APIError as error:
             LOG.warning('QA API failure: %s', error)
             if error.region_blocked:
@@ -167,7 +171,7 @@ class Bot(discord.Client):
                     self.store.update(job['id'], 'notifying', run['id'], run['html_url'])
                     channel = self.get_channel(int(job['channel'])) or await self.fetch_channel(int(job['channel']))
                     if package:
-                        text = ('Your test build is ready! Download it below and try your change. '
+                        text = ('Your test build is ready! The targeted regression and automated checks passed. Download it below and try your change. '
                                 'GitHub sign-in is required.\n\n'
                                 'If it meets your requirements, click the confirmation button to create a PR for maintainer review. '
                                 'It will not merge automatically. '
@@ -177,8 +181,8 @@ class Bot(discord.Client):
                             payload['view'] = PackageReview(self, job['id'], payload['view'])
                     else:
                         text = ("I couldn't finish preparing your test build. " if building else "I couldn't complete the requested changes. ")
-                        payload = action_message(text + 'The maintainer can check what went wrong. Use /revise to try again with feedback.')
-                    await channel.send(**payload)
+                        payload = action_message(text + 'The repair has not been verified. The maintainer can check the failure or budget limit. Use /revise with more details to try again.')
+                    await channel.send(**notify_owner(payload, job['owner']))
                     self.store.update(job['id'], status)
                 except Exception as error:
                     LOG.warning('Job polling failed for %s: %s', job['id'], type(error).__name__)
@@ -186,7 +190,7 @@ class Bot(discord.Client):
                         self.store.update(job['id'], 'notification_uncertain')
             await asyncio.sleep(20)
 
-    async def start_job(self, interaction, request, previous=None):
+    async def start_job(self, interaction, request, previous=None, attachment_ids=()):
         if not self.eligible(interaction.user.id, interaction.guild_id):
             raise ValueError('This server is not enabled.')
         self.admit(interaction.user.id, "dev")
@@ -210,10 +214,14 @@ class Bot(discord.Client):
             if old['branch'] != WORK_BRANCH:
                 raise ValueError('This task belongs to a retired repair branch. Please submit a new request.')
             request = f'Original request:\n{old["request"][:2500]}\n\nFollow-up:\n{request}'[:6000]
+        if previous and not attachment_ids:
+            attachment_ids = self.store.job_attachments(previous)
+        transfer_token = await asyncio.to_thread(create_transfer, interaction.user.id, interaction.channel_id, key, attachment_ids)
         self.store.reserve(key, 'dev', JOB_CAP)
         self.store.add_job(key, interaction.user.id, interaction.channel_id, branch, request)
+        self.store.save_attachments(key, attachment_ids)
         try:
-            await self.github.dispatch(key, request, branch)
+            await self.github.dispatch(key, request, branch, transfer_token=transfer_token)
             self.store.update(key, 'queued')
         except Exception:
             # The response can be lost after GitHub accepts dispatch. Poll rather than retry.

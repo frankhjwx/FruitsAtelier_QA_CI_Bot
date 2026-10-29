@@ -202,8 +202,9 @@ Invalid files produce an explicit unreadable-file observation for the model.
 This is static support evidence, not an editor reproduction or import validation.
 For beatmap issues, Papaya requests the smallest necessary sample once, and uses
 repository documentation to explain FAZ/FAD export steps. It preserves relevant
-observations in the proposed CI task. Original uploads are not sent to CI or
-committed to the public source repository.
+observations in the proposed CI task. After confirmation, original uploads also
+reach private CI through the expiring transfer service; they are never committed
+to the public source repository or included in public test packages.
 
 Replies can reuse attachments from the same user's explicit reply chain in the
 same channel (up to three source messages). Expired attachments are not fetched
@@ -231,3 +232,43 @@ QA and editing model instructions restrict assistance to Fruits Atelier and osu!
 including directly related beatmaps, resources and troubleshooting. Unrelated
 requests are declined; unrelated parts of mixed requests are not answered.
 This is a prompt-level policy, not a keyword blacklist or code-based topic filter.
+
+## Sample-backed private regression
+
+Confirmation binds the current and referenced attachment IDs to the task. `/revise`
+reuses these IDs; it requests fresh uploads if samples expired or have less than
+two hours remaining. Transfer copies retain the earliest original upload time.
+The hourly cleanup service also removes `/var/lib/fruitsatelier-discord/ci-transfers`.
+
+The Bot serves per-job capabilities over TLS on port 8443. CI pins the certificate
+fingerprint before sending authorization. Editor and validation capabilities have
+separate write permissions; result submissions are immutable. Configure the public
+repository variables `FA_TRANSFER_URL` and `FA_TRANSFER_FINGERPRINT` in the private
+Bot repository. `deploy/configure_transfer.py` creates the server certificate/key
+and prints only its public SHA-256 fingerprint. No additional long-lived GitHub
+credential is required: the trusted controller uses its job-scoped Actions token
+to dispatch validation. The certificate key stays on the VPS.
+
+The AI can inspect original sample text/archive entries and image evidence, and
+writes a private C# regression using the real Core or Windows App APIs. A separate
+Windows runner builds the same test against the unchanged baseline and candidate.
+Baseline compilation failure is not a reproduction: the test must compile, raise
+an explicit behavioral regression failure before the fix, and pass after it.
+Supplied samples must be accessed through the private harness. Windows regression
+suites and the macOS non-device checks also run. The controller verifies sample
+hashes and test identity before publishing source and requesting a public package.
+This does not establish manual GUI, audio perception or device-specific behavior.
+Unsupported or unreproduced cases are reported as unverified, never repaired.
+
+Failed validation returns private diagnostics to the AI for up to three rounds
+within the same $0.50 task budget and workflow timeout. No raw sample, private test
+or test output is uploaded as a GitHub artifact. They remain in expiring VPS transfer
+storage and disposable runner directories, which are removed in finally/always
+cleanup. Download deadlines leave sufficient time before the original expiry;
+reruns do not renew retention. Public artifacts contain only the ordinary package
+and a small source/verification receipt. Final results mention only the requester.
+
+Maintainers can dispatch `discord-develop.yml` with `acceptance: true` using a
+synthetic sample transfer. This validates the complete private flow, deliberately
+injects a failed first validation round, and never publishes a source commit or
+public package. The second round must pass the actual unchanged-test comparison.

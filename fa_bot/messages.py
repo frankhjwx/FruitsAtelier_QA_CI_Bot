@@ -36,9 +36,10 @@ def action_message(text, label=None, url=None):
 
 
 class DevelopmentOffer(discord.ui.View):
-    def __init__(self, bot, owner, channel, request, sources=None):
+    def __init__(self, bot, owner, channel, request, sources=None, attachment_ids=()):
         super().__init__(timeout=900)
         self.bot, self.owner, self.channel, self.request = bot, owner, channel, request
+        self.attachment_ids = attachment_ids
         self.pending = False
         self.submitted = False
         self.message = None
@@ -62,7 +63,7 @@ class DevelopmentOffer(discord.ui.View):
         try:
             await interaction.response.defer(thinking=True, ephemeral=True)
             try:
-                status = await self.bot.start_job(interaction, self.request)
+                status = await self.bot.start_job(interaction, self.request, **({'attachment_ids': self.attachment_ids} if self.attachment_ids else {}))
             except ValueError as error:
                 await interaction.followup.send(str(error), ephemeral=True)
                 return
@@ -87,5 +88,10 @@ class DevelopmentOffer(discord.ui.View):
 def qa_message(reply, bot, owner, channel):
     result = linked_message(reply.text)
     if reply.change_request:
-        result['view'] = DevelopmentOffer(bot, owner, channel, reply.change_request, result['view'])
+        result['view'] = DevelopmentOffer(bot, owner, channel, reply.change_request, result['view'], reply.attachment_ids)
     return result
+
+
+def notify_owner(payload, owner):
+    return {**payload, 'content': f'<@{int(owner)}> ' + payload['content'],
+            'allowed_mentions': discord.AllowedMentions(users=[discord.Object(id=int(owner))], roles=False, everyone=False, replied_user=False)}

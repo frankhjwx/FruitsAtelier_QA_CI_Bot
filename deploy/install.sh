@@ -17,6 +17,7 @@ if [ ! -f /etc/fruitsatelier-discord/discord-token ] && [ -f /etc/fruitsatelier-
 fi
 python3 -m venv venv
 venv/bin/python -m pip install -v -r requirements.txt
+venv/bin/python deploy/configure_transfer.py
 install -o root -g root -m 0644 deploy/fruitsatelier-discord.service /etc/systemd/system/fruitsatelier-discord.service
 install -d -o fruitsatelier-qabot -g fruitsatelier-qabot -m 0700 /var/lib/fruitsatelier-discord/attachments
 install -o root -g root -m 0644 deploy/fruitsatelier-attachments-cleanup.service /etc/systemd/system/

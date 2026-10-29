@@ -1,4 +1,5 @@
 import datetime as dt
+import json
 import sqlite3
 import time
 from pathlib import Path
@@ -13,6 +14,7 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.db.executescript('''
           PRAGMA journal_mode=WAL;
+          CREATE TABLE IF NOT EXISTS job_attachments (job_id TEXT PRIMARY KEY, ids TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS reviews (
             job_id TEXT PRIMARY KEY, sha TEXT, state TEXT, url TEXT,
             number INTEGER, created REAL);
@@ -92,3 +94,11 @@ class Store:
         with self.db:
             self.db.execute('UPDATE reviews SET state=?,url=coalesce(?,url),number=coalesce(?,number) WHERE job_id=?',
                             (state, url, number, key))
+
+    def save_attachments(self, key, ids):
+        with self.db:
+            self.db.execute('INSERT OR REPLACE INTO job_attachments VALUES (?,?)',(key,json.dumps(list(ids))))
+
+    def job_attachments(self, key):
+        row=self.db.execute('SELECT ids FROM job_attachments WHERE job_id=?',(key,)).fetchone()
+        return json.loads(row[0]) if row else []

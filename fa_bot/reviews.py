@@ -2,7 +2,7 @@
 import asyncio
 import logging
 import discord
-from .messages import action_message
+from .messages import action_message, notify_owner
 
 LOG = logging.getLogger('fa_bot')
 
@@ -89,7 +89,7 @@ async def poll_reviews(bot):
                     bot.store.review_state(key, 'failed')
                     payload = action_message('I could not create the PR. Please ask the maintainer to check the issue. Your changes have not been merged.')
                 channel = bot.get_channel(int(job['channel'])) or await bot.fetch_channel(int(job['channel']))
-                await channel.send(**payload)
+                await channel.send(**notify_owner(payload, job['owner']))
             except Exception as error:
                 LOG.warning('PR tracking failed for %s: %s', key, type(error).__name__)
         await asyncio.sleep(20)

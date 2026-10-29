@@ -22,10 +22,10 @@ class GitHub:
                 raise RuntimeError(f'GitHub returned HTTP {response.status}')
             return await response.json() if response.status != 204 else None
 
-    async def dispatch(self, key, request, branch):
+    async def dispatch(self, key, request, branch, transfer_token=""):
         await self.request('POST', f'/repos/{self.repo}/actions/workflows/discord-develop.yml/dispatches',
                            json={'ref': 'main', 'inputs': {
-                               'job_id': key, 'request': request, 'branch': branch}})
+                               'job_id': key, 'request': request, 'branch': branch, 'transfer_token': transfer_token}})
 
     async def find_run(self, key, build=False, review=False):
         repo = SOURCE_REPO if build else self.repo
@@ -69,6 +69,8 @@ class GitHub:
             receipt = json.loads(archive.read('source.json'))
         if receipt.get('job_id') != key or not re.fullmatch(r'[a-f0-9]{40}', receipt.get('sha', '')):
             raise ValueError('Source receipt identity mismatch')
+        if receipt.get('regression_verified') is not True:
+            raise ValueError('Private regression verification is missing')
         return receipt['sha']
 
     async def dispatch_pr(self, job, sha):

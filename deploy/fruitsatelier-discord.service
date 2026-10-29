@@ -13,6 +13,8 @@ WorkingDirectory=/opt/fruitsatelier-discord
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=PYTHONUNBUFFERED=1
 Environment=STATE_FILE=/var/lib/fruitsatelier-discord/bot.sqlite3
+Environment=CI_TRANSFER_CERT=/etc/fruitsatelier-discord/ci-transfer.crt
+Environment=CI_TRANSFER_KEY=/etc/fruitsatelier-discord/ci-transfer.key
 Environment=BOT_REPO=frankhjwx/FruitsAtelier_QA_CI_Bot
 Environment=DISCORD_TOKEN_FILE=/etc/fruitsatelier-discord/discord-token
 Environment=OPENAI_API_KEY_FILE=/etc/fruitsatelier-discord/openai-key
