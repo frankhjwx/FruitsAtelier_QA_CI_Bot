@@ -106,12 +106,18 @@ def main():
         result['sample_hashes']=[f['sha256'] for f in manifest['files']]
         if platform=='windows':
             for label,source in [('baseline',baseline),('fixed',fixed)]:
-                prep=run([sys.executable,'scripts/Build-MapsetVerifier.py'],source,deadline)
-                if prep['exit']!=0: result[label]={'prepare':prep}; return
+                if candidate['regression']['target']=='app':
+                    print(f'Preparing {label} application dependencies.',flush=True)
+                    prep=run([sys.executable,'scripts/Build-MapsetVerifier.py'],source,deadline)
+                    if prep['exit']!=0: result[label]={'prepare':prep}; return
+                print(f'Running {label} sample regression.',flush=True)
                 result[label]=regression(source,root/(label+'-test'),candidate['regression']['code'],candidate['regression']['target'],sample_index,deadline)
             before=result['baseline']; after=result['fixed']
             if (before.get('run') or {}).get('exit')!=42 or (after.get('run') or {}).get('exit')!=0:
                 return
+            print('Preparing fixed-source regression suites.',flush=True)
+            prep=run([sys.executable,'scripts/Build-MapsetVerifier.py'],fixed,deadline)
+            if prep['exit']!=0: result['prepare']=prep; return
             build=run(['dotnet','build','FruitsAtelier.sln','-c','Release','-p:RestoreLockedMode=true','--nologo'],fixed,deadline)
             result['build']=build
             if build['exit']!=0: return
@@ -122,6 +128,7 @@ def main():
                 result['suites']=results
                 if check['exit']!=0: return
         else:
+            print('Preparing macOS regression suites.',flush=True)
             prep=run([sys.executable,'scripts/Build-MapsetVerifier.py'],fixed,deadline)
             result['prepare']=prep
             if prep['exit']!=0: return
