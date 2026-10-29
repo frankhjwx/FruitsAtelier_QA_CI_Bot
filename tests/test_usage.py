@@ -5,6 +5,41 @@ import worker
 
 
 class UsageBudgetTests(unittest.TestCase):
+    def test_duplicate_query_keeps_one_full_copy(self):
+        with tempfile.TemporaryDirectory() as folder:
+            ws=worker.Workspace(folder)
+            calls=[{'type':'function_call','name':'read','call_id':str(i),
+                    'arguments':'{"path":"src/Test.cs"}'} for i in range(2)]
+            responses=[{'usage':{'input_tokens':100,'output_tokens':10},'output':calls},
+                       {'status':'completed','usage':{'input_tokens':150,'output_tokens':10},
+                        'prompt_cache_diagnostics':{'type':'comparison_response_not_found'},
+                        'output':[{'type':'message','content':[{'type':'output_text','text':'Done'}]}]}]
+            with patch.object(worker,'request_json',side_effect=responses), patch.object(ws,'read',return_value='source '*100):
+                result,_=worker.generate(ws,'Read definitions','fake')
+            outputs=[x['output'] for x in ws.history if x.get('type')=='function_call_output']
+            self.assertEqual(outputs[0],'source '*100)
+            self.assertIn('call 0',outputs[1])
+            self.assertEqual(result,'Done')
+
+    def test_validation_round_keeps_history_and_compares_previous_response(self):
+        with tempfile.TemporaryDirectory() as folder:
+            ws=worker.Workspace(folder)
+            replies=[{'id':'resp_first','status':'completed','usage':{'input_tokens':100,'output_tokens':10},
+                      'output':[{'type':'message','role':'assistant','content':[{'type':'output_text','text':'Candidate'}]}]},
+                     {'id':'resp_second','status':'completed','usage':{'input_tokens':120,'output_tokens':10},
+                      'prompt_cache_diagnostics':{'type':'cache_hit'},
+                      'output':[{'type':'message','role':'assistant','content':[{'type':'output_text','text':'Repaired'}]}]}]
+            with patch.object(worker,'request_json',side_effect=replies) as request:
+                _,cost=worker.generate(ws,'Original requirement','fake')
+                prefix=worker.cached_input(ws.history)
+                _,total=worker.generate(ws,'Failed check at line 900','fake',used=cost)
+            first,second=[c.args[3] for c in request.call_args_list]
+            self.assertNotIn('comparison_response_id',first['prompt_cache_options'])
+            self.assertEqual(second['prompt_cache_options']['comparison_response_id'],'resp_first')
+            self.assertEqual(second['input'][:len(prefix)],prefix)
+            self.assertEqual(ws.model_turns,2)
+            self.assertGreater(total,cost)
+
     def test_measured_cache_reads_and_writes_are_not_double_counted(self):
         usage={'input_tokens':12000,'output_tokens':100,
                'input_tokens_details':{'cached_tokens':4000,'cache_write_tokens':7000,
@@ -43,7 +78,7 @@ class UsageBudgetTests(unittest.TestCase):
                 {'usage':{'input_tokens':100,'output_tokens':100},'output':calls},
                 {'usage':{'input_tokens':10000,'output_tokens':50},'status':'completed',
                  'output':[{'type':'message','content':[{'type':'output_text','text':'Finished.'}]}]}]
-            with patch.object(worker,'request_json',side_effect=responses) as request, patch.object(ws,'read',return_value='x'*14000):
+            with patch.object(worker,'request_json',side_effect=responses) as request, patch.object(ws,'read',side_effect=[str(i)+'x'*13999 for i in range(8)]):
                 summary, cost = worker.generate(ws,'Inspect the anchor behavior','fake')
             self.assertEqual(summary,'Finished.')
             self.assertEqual(request.call_count,2)
@@ -51,7 +86,7 @@ class UsageBudgetTests(unittest.TestCase):
             outputs = [x for x in history if x.get('type')=='function_call_output']
             self.assertEqual(len(outputs),8)
             self.assertIn('omitted',outputs[0]['output'][0]['text'])
-            self.assertEqual(outputs[-1]['output'][0]['text'],'x'*14000)
+            self.assertEqual(outputs[-1]['output'][0]['text'],'7'+'x'*13999)
             self.assertLess(cost,worker.CAP)
 
     def test_measured_usage_releases_unused_reservation(self):

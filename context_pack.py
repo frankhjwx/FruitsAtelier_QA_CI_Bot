@@ -8,19 +8,50 @@ STOP = set('i want the a an and or to for of in on it is be can have has will th
            'please should would could need allow ability though through become while helpful make do '
            'my me we our you your not both then than also editor feature request project'.split())
 
+# Retrieval aliases only; request scope is decided by the model's instructions.
+ALIASES = {'\u951a\u70b9':'anchor', '\u6ed1\u6761':'slider', '\u5934\u5c3e':'endpoint',
+           '\u66f2\u7ebf':'curve', '\u64a4\u9500':'undo', '\u5438\u9644':'snap',
+           '\u97f3\u9891':'audio', '\u4e3b\u9898':'theme', '\u5bfc\u51fa':'export',
+           '\u5bfc\u5165':'import', '\u76ae\u80a4':'skin', '\u97f3\u6548':'hitsound'}
+
 
 def query_terms(request):
     words = re.findall(r'[A-Za-z_][A-Za-z0-9_]*',request)
     counts=Counter(w.lower() for w in words if w.lower() not in STOP and len(w)>2)
-    return [word for word,count in counts.most_common(8) for _ in range(min(count,4))]
+    for term, alias in ALIASES.items():
+        if term in request: counts[alias]+=request.count(term)
+    terms=[word for word,count in counts.most_common(8) for _ in range(min(count,4))]
+    return terms + list(dict.fromkeys(re.findall(r'[\u3400-\u9fff]',request)))[:12]
 
 
-def evidence_pack(workspace, request, feedback=''):
+def failure_excerpt(workspace, path, line):
+    lines=workspace.path(path).read_text(encoding='utf-8-sig').splitlines()
+    line=max(1,min(line,len(lines)))
+    start,end=max(1,line-30),min(len(lines),line+40)
+    if workspace.code_index:
+        row=workspace.code_index.db.execute(
+            'SELECT start,end FROM chunks WHERE path=? AND CAST(start AS INTEGER)<=? '
+            'AND CAST(end AS INTEGER)>=? ORDER BY CAST(end AS INTEGER)-CAST(start AS INTEGER) LIMIT 1',
+            (path,line,line)).fetchone()
+        if row and int(row[1])-int(row[0])<=110: start,end=map(int,row)
+    return '\n'.join(f'{i}: {lines[i-1]}' for i in range(start,end+1))
+
+
+def relevant_sections(body, request):
+    sections=re.split(r'(?=^#{1,3} )',body,flags=re.M)
+    terms=set(query_terms(request))
+    ranked=sorted(enumerate(sections),key=lambda item:(-sum(item[1].lower().count(t) for t in terms),item[0]))
+    selected=sorted(ranked[:2])
+    return '[Selected sections; consult the source for other sections.]\n'+'\n'.join(s for _,s in selected)
+
+
+def evidence_pack(workspace, request, feedback='', continuing=False):
     workspace.code_search(' '.join(query_terms(request)))
     index = workspace.code_index
     pieces = []
     remaining = 18000
     seen = set()
+    bodies=set()
     source_headers = {}
     def header(path):
         if path in source_headers: return
@@ -32,7 +63,12 @@ def evidence_pack(workspace, request, feedback=''):
             pass
     def add(label, body, cap):
         nonlocal remaining
-        raw = (label+'\n'+body).encode()[:min(cap,remaining)]
+        if body in bodies: return
+        bodies.add(body)
+        full=(label+'\n'+body).encode()
+        allowance=min(cap,remaining)
+        marker=b'\n[Excerpt truncated; read the source for omitted content.]'
+        raw=full if len(full)<=allowance else full[:max(0,allowance-len(marker))]+marker[:allowance]
         text = raw.decode('utf-8',errors='ignore')
         if text:
             pieces.append(text)
@@ -40,13 +76,15 @@ def evidence_pack(workspace, request, feedback=''):
     if feedback:
         add('FAILED CHECKS (diagnostic data)',feedback,3500)
         # Runner paths differ by platform; repository-relative failing test paths are stable.
-        failure_paths = re.findall(r'(?:tests|src)/[A-Za-z0-9_./-]+\.cs', feedback.replace('\\','/'))
-        for path in list(dict.fromkeys(failure_paths))[:2]:
+        locations = re.findall(r'((?:tests|src)/[A-Za-z0-9_./-]+\.cs)(?::line (\d+)|\((\d+)(?:,\d+)?\))?', feedback.replace('\\','/'))
+        for path,line,column_line in list(dict.fromkeys(locations))[:2]:
             try:
-                add('FAILING CHECK SOURCE '+path,workspace.path(path).read_text(encoding='utf-8'),4000)
+                add('FAILING CHECK SOURCE '+path,failure_excerpt(workspace,path,int(line or column_line or 1)),4000)
                 header(path)
             except (OSError, ValueError):
                 pass
+        if continuing:
+            return '\n\n'.join(pieces)
         diff = subprocess.check_output(['git','-C',str(workspace.root),'diff','--no-ext-diff','--unified=3','HEAD','--',*sorted(workspace.changed)],text=True)
         tracked=set(subprocess.check_output(['git','-C',str(workspace.root),'ls-files'],text=True).splitlines())
         for name in sorted(workspace.changed-tracked):
@@ -57,7 +95,12 @@ def evidence_pack(workspace, request, feedback=''):
     else:
         for path in ['AGENTS.md','docs/EDITING_PERFORMANCE.md']:
             try:
-                add(path,workspace.path(path).read_text(encoding='utf-8'),2500)
+                body=workspace.path(path).read_text(encoding='utf-8')
+                if path=='AGENTS.md':
+                    if len(body.encode())>10000: raise ValueError('Repository instructions exceed context allowance')
+                    add(path,body,11000)
+                else:
+                    add(path,relevant_sections(body,request),3500)
             except (OSError,ValueError):
                 pass
     query = ' '.join(query_terms(request))

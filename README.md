@@ -87,6 +87,18 @@ tokens respectively. Conservative reservations include a cache-write margin.
 The development worker preserves controller messages in the conversation prefix,
 marks reusable message boundaries, and retains reasoning across turns for cache
 reuse. Usage diagnostics include cached reads and cache writes by lifetime.
+Validation retries continue the same in-memory conversation, with the same total
+50-call allowance and dollar cap. Only failure excerpts are appended; original
+attachment images are not resent as new messages. Identical query results refer
+back to the retained evidence instead of adding a second full copy.
+Official cache diagnostics compare each completed response with its predecessor.
+Only diagnostic type, reason and token counts are logged; unavailable or expired
+comparisons do not stop repair. Private round diagnostics also include usage
+counts, so cost analysis does not depend on waiting for package logs.
+Retrieval expands common Chinese domain terms without a model call, keeps unknown
+Chinese terms searchable, and includes complete bounded repository instructions.
+Performance documentation is selected by section with explicit truncation markers.
+Failed checks include source around their line number or enclosing indexed method.
 Completed calls use Standard Sol prices when cache read/write usage is complete:
 $2 ordinary input, $0.10 cached input, $2.50 for 30-minute writes, $5 for 12-hour
 writes, and $10 output per million tokens. Incomplete or inconsistent cache usage

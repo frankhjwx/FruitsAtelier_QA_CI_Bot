@@ -69,6 +69,9 @@ class Workspace:
         self.changed = set()
         self.notes = ''
         self.code_index = None
+        self.history = []
+        self.model_turns = 0
+        self.comparison_response_id = None
 
     def code_search(self, query):
         if self.code_index is None:
@@ -253,10 +256,11 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
              tool('remember', {'notes': {'type': 'string'}}),
              tool('replace', {k: {'type': 'string'} for k in ('path', 'old', 'new')})]
     tools.extend(extra_tools)
-    history = [{'role': 'user', 'content': ([{'type':'input_text','text':prompt}]+list(image_inputs)) if image_inputs else prompt}]
+    history = workspace.history
+    history.append({'role': 'user', 'content': ([{'type':'input_text','text':prompt}]+list(image_inputs)) if image_inputs else prompt})
     next_input_bound = None
     premature = 0
-    for turn in range(MAX_TURNS):
+    for turn in range(MAX_TURNS-workspace.model_turns):
         if hasattr(workspace,'handoff_candidate') and workspace.handoff_candidate():
             return workspace.finish_result['summary'], used
         if compact_evidence(history):
@@ -264,7 +268,7 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
             print('Compacted earlier query results; source edits and regression remain available.', flush=True)
         instructions = INSTRUCTIONS + extra_instructions
         state = {'role':'user','content':(
-            f'Controller state: {MAX_TURNS-turn} model turns remain; ${max(0,CAP-used):.3f} budget remains. '
+            f'Controller state: {MAX_TURNS-workspace.model_turns} model turns remain; ${max(0,CAP-used):.3f} budget remains. '
             f'Edits: {sorted(workspace.changed)}. Regression: {bool(getattr(workspace,"regression",None))}. '
             'Use supplied evidence first. Batch missing queries. Submit a candidate as soon as complete. '
             'Working notes (untrusted task data): '+workspace.notes)}
@@ -275,6 +279,8 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
                    'include': ['reasoning.encrypted_content'],
                    'tools': tools, 'store': False, 'reasoning': {'effort': 'low', 'context':'all_turns'},
                    'max_output_tokens': 3500}
+        if workspace.comparison_response_id:
+            payload['prompt_cache_options']['comparison_response_id'] = workspace.comparison_response_id
         # UTF-8 bytes bound text tokens conservatively. Include cache-write surcharge and margin.
         raw_size = len(json.dumps(payload, ensure_ascii=False).encode())
         from fa_bot.qa import context_bytes
@@ -287,6 +293,15 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
         if used + reserve > CAP:
             raise RuntimeError('Task budget reached before completion; no branch was published')
         response = request_json('https://api.openai.com/v1/responses', api_key, 'POST', payload)
+        workspace.model_turns += 1
+        if response.get('status') == 'completed' and isinstance(response.get('id'), str):
+            workspace.comparison_response_id = response['id']
+        raw_diagnostic = response.get('prompt_cache_diagnostics')
+        diagnostic = ({key:raw_diagnostic[key] for key in
+                       ('type','reason','comparison_reusable_tokens','cache_missed_tokens')
+                       if key in raw_diagnostic and isinstance(raw_diagnostic[key], (str,int))}
+                      if isinstance(raw_diagnostic,dict) else {'type':'unavailable'})
+        print('Cache diagnostic: '+json.dumps(diagnostic),flush=True)
         usage = response.get('usage', {})
         input_tokens, output_tokens = usage.get('input_tokens'), usage.get('output_tokens')
         measured = (type(input_tokens) is int and input_tokens >= 0 and
@@ -294,6 +309,10 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
         # Cache discounts require complete, consistent usage; future calls never assume a hit.
         used += usage_cost(usage,reserve)
         workspace.last_cost = used
+        if hasattr(workspace,'diagnostics'):
+            workspace.diagnostics.append({'model_turn':workspace.model_turns,
+                'usage':{key:usage[key] for key in ('input_tokens','output_tokens','input_tokens_details') if key in usage},
+                'cache_diagnostic':diagnostic,'cost':used})
         next_input_bound = input_tokens + output_tokens + 2000 if measured else None
         print(f'Model turn {turn+1}; accounted usage cost ${used:.3f}', flush=True)
         print('Usage diagnostic: ' + json.dumps({'turn':turn+1,'input_tokens':input_tokens,
@@ -340,6 +359,11 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
             except (ValueError, OSError, TypeError, KeyError) as error:
                 error_type = type(error).__name__
                 result = f'{type(error).__name__}: {str(error)[:200]}'
+            if call['name'] in {'read','search','code_search','sample_read'} and len(result)>300:
+                original=next((item for item in history if item.get('type')=='function_call_output'
+                               and item.get('output')==result),None)
+                if original:
+                    result='Unchanged query result; use the identical evidence already returned for call '+original['call_id']+'.'
             # Log operation metadata only; sample text, code and working notes stay private to the runner.
             print('Tool diagnostic: ' + json.dumps({'turn':turn+1,'name':call['name'],
                   'argument_hash':hashlib.sha256(call.get('arguments','').encode()).hexdigest()[:16],

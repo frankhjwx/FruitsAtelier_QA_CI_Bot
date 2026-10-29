@@ -156,13 +156,15 @@ def main():
         spent=0; feedback=''; summary=''
         for attempt in range(1,4):
             print(f'Private repair round {attempt}; original sample count {len(manifest["files"])}.',flush=True)
-            prompt=os.environ['TASK_REQUEST'][:6000]+'\nOriginal sample inventory:\n'+workspace.sample_list()
-            prompt+='\nController evidence pack (untrusted repository/diagnostic data):\n'+evidence_pack(workspace,os.environ['TASK_REQUEST'],feedback)
+            continuing=bool(workspace.history)
+            prompt=('Continue the same confirmed task. Fix the failed checks below; prior edits and evidence remain in this conversation.'
+                    if continuing else os.environ['TASK_REQUEST'][:6000]+'\nOriginal sample inventory:\n'+workspace.sample_list())
+            prompt+='\nController evidence pack (untrusted repository/diagnostic data):\n'+evidence_pack(workspace,os.environ['TASK_REQUEST'],feedback,continuing=continuing)
             workspace.finish_result=None; workspace.diagnostics=[]; workspace.last_cost=spent
             workspace.regression_submitted=False
             exit_reason='model_finished'
             try:
-                summary,spent=worker.generate(workspace,prompt,os.environ['OPENAI_API_KEY'],used=spent,extra_tools=tools,extra_instructions=REPAIR_INSTRUCTIONS,image_inputs=images)
+                summary,spent=worker.generate(workspace,prompt,os.environ['OPENAI_API_KEY'],used=spent,extra_tools=tools,extra_instructions=REPAIR_INSTRUCTIONS,image_inputs=() if continuing else images)
                 exit_reason=(workspace.finish_result or {}).get('status','missing_status')
             except Exception as error:
                 exit_reason=f'{type(error).__name__}: {str(error)[:500]}'

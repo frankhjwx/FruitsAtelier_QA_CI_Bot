@@ -39,7 +39,7 @@ class CompletionTests(unittest.TestCase):
                 summary,cost=worker.generate(ws,'Implement one behavior','fake',used=.1,extra_tools=tools)
             self.assertEqual(request.call_count,2)
             self.assertEqual(ws.finish_result['status'],'blocked')
-            self.assertEqual(ws.diagnostics[0]['final_text'],'I can do this later.')
+            self.assertEqual(next(e['final_text'] for e in ws.diagnostics if 'final_text' in e),'I can do this later.')
             self.assertAlmostEqual(cost,.1009)
 
     def test_ready_requires_both_edits_and_regression(self):
