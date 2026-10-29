@@ -123,6 +123,7 @@ def generate(workspace, prompt, api_key):
              tool('replace', {k: {'type': 'string'} for k in ('path', 'old', 'new')})]
     history = [{'role': 'user', 'content': prompt}]
     used = 0.0
+    next_input_bound = None
     for turn in range(12):
         payload = {'model': MODEL, 'instructions': INSTRUCTIONS, 'input': history,
                    'include': ['reasoning.encrypted_content'],
@@ -130,13 +131,19 @@ def generate(workspace, prompt, api_key):
                    'max_output_tokens': 3500}
         # UTF-8 bytes bound text tokens conservatively. Include cache-write surcharge and margin.
         size = len(json.dumps(payload, ensure_ascii=False).encode())
-        reserve = (size + 2000) * 2.50 / 1_000_000 + 3500 * 10 / 1_000_000
+        input_bound = next_input_bound if next_input_bound is not None else size + 2000
+        reserve = input_bound * 2.50 / 1_000_000 + 3500 * 10 / 1_000_000
         if size > 100_000 or used + reserve > CAP:
             raise RuntimeError('Task budget reached before completion; no branch was published')
         response = request_json('https://api.openai.com/v1/responses', api_key, 'POST', payload)
-        # Reserve every call at its upper bound, including calls whose billing is uncertain.
-        used += reserve
-        print(f'Model turn {turn+1}; conservative cost reservation ${used:.3f}', flush=True)
+        usage = response.get('usage', {})
+        input_tokens, output_tokens = usage.get('input_tokens'), usage.get('output_tokens')
+        measured = (type(input_tokens) is int and input_tokens >= 0 and
+                    type(output_tokens) is int and output_tokens >= 0)
+        # Completed requests use reported tokens at conservative rates; missing usage keeps the full reserve.
+        used += ((input_tokens * 2.50 + output_tokens * 10) / 1_000_000) if measured else reserve
+        next_input_bound = input_tokens + output_tokens + 2000 if measured else None
+        print(f'Model turn {turn+1}; conservative usage cost ${used:.3f}', flush=True)
         output = response.get('output', [])
         history.extend(output)
         calls = [x for x in output if x.get('type') == 'function_call']
@@ -158,7 +165,10 @@ def generate(workspace, prompt, api_key):
                 result = getattr(workspace, call['name'])(**args)
             except (ValueError, OSError, TypeError, KeyError) as error:
                 result = f'{type(error).__name__}: {str(error)[:200]}'
-            history.append({'type': 'function_call_output', 'call_id': call['call_id'], 'output': result})
+            tool_output = {'type': 'function_call_output', 'call_id': call['call_id'], 'output': result}
+            history.append(tool_output)
+            if next_input_bound is not None:
+                next_input_bound += len(json.dumps(tool_output, ensure_ascii=False).encode())
     raise RuntimeError('Task turn limit reached; no branch was published')
 
 
@@ -212,7 +222,7 @@ def main():
         out.write(f'commit={sha}\n')
     with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
         out.write(f'## Experimental change\n\nSource commit: `{sha}`\n\n{summary}\n\n'
-                  f'Model budget reserved: ${reserved:.3f}. Tests run in separate jobs.\n')
+                  f'Conservative model usage cost: ${reserved:.3f}. Tests run in separate jobs.\n')
 
 
 if __name__ == '__main__':

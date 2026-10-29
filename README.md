@@ -88,9 +88,10 @@ The durable UTC-calendar-month ledger limits automatic QA to $10 and development
 reservations to $80, leaving $10 of a $100 target outside automated allocation.
 QA reserves $0.02 before a request and settles successful calls using reported
 usage. Failures retain the reservation. Development reserves $0.50 per attempt;
-unused development reservation is not refunded. PR creation uses no model call. The worker also checks each
-model call against the same per-attempt ceiling using a conservative UTF-8 byte
-bound. Some requests will exceed this small-change budget and stop without a
+unused development reservation is not refunded. PR creation uses no model call. The worker checks each model call against the same per-attempt ceiling.
+Completed calls use reported token counts at conservative rates. The next call
+reserves the maximum output plus reported prior tokens and a UTF-8 byte bound
+for new tool results; missing usage retains the full conservative reservation. Some requests will exceed this small-change budget and stop without a
 package. Five daily development attempts per user and one active repair globally
 bound the queue. The private worker holds its concurrency slot through public
 testing and packaging. An uncertain dispatch retains the repair slot until a
