@@ -130,6 +130,13 @@ billing controls and do not include manually dispatched workflows or other apps.
 
 The development worker supports scoped literal search with pagination, bounded line-range
 reads and persistent working notes to reduce repeated queries after context compaction.
+QA first checks whether the requested behavior is already supported. Its instructions suppress
+development proposals for an already-satisfied goal, while retaining concrete defect reports and
+distinguishing dev support from released behavior. This is a model judgment grounded in evidence.
+Confirmed proposals carry QA's technical search query, investigation direction, evidence commit,
+and up to three source locations. Locations must come from the evidence returned to QA.
+CI prioritizes these leads and rereads source from its checkout; line-based excerpts are used only
+when the evidence commit matches. Follow-up requests retain the leads as untrusted context.
 The evidence limit excludes opaque encrypted reasoning, which remains in requests and
 under the separate transport limit. Compaction removes only older query bodies, preserving
 the latest tool batch and any original evidence referenced by its duplicate results.
@@ -173,6 +180,8 @@ FTS5. Methods, constructors, properties and type headers retain their source pat
 and line ranges. Identifier splitting supports both exact symbols and component
 words. This is structural and lexical retrieval, not vector embeddings or a
 compiler-resolved call graph; it makes no additional model calls.
+QA searches source and test symbols using the model's technical query, without appending the raw
+user request to that query. Ordinary QA and localization share the same two model calls.
 
 The server saves `code-index.sqlite3` beside the state database. Its commit SHA
 and index format must match before reuse; a different revision triggers rebuilding
@@ -183,6 +192,13 @@ CI exposes `code_search` using the same indexer against its own checked-out comm
 It includes relevant documentation and tests, and updates changed files after
 each edit. Results identify the baseline SHA and working edits. The index remains
 in runner memory and is not published. Server indexing never executes editor code.
+
+Real benchmark dispatches require a QA handoff. Prepare one with
+`python prepare_task.py --source-commit <sha> --request-file <file> --output <json>`
+in the configured server environment. This uses the QA credentials and budget, records `qa_cost`,
+and does not dispatch CI. Dispatch only when `accepted` is true, using the returned `request`
+unchanged and the same `source_commit`. QA-declined requests remain QA-only. Report preparation
+cost separately from the CI worker's $0.50 cap. The command never starts a benchmark sequence.
 
 Parser dependencies are pinned to [tree-sitter 0.25.2](https://github.com/tree-sitter/py-tree-sitter)
 and [tree-sitter-c-sharp 0.23.1](https://github.com/tree-sitter/tree-sitter-c-sharp),

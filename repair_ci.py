@@ -10,6 +10,7 @@ import zipfile
 import worker
 from context_pack import evidence_pack, concise_failures
 from ci_transfer import Transfer
+from fa_bot.handoff import decode
 from fa_bot.attachments import IMAGES, inspect_file, excerpt
 
 REPAIR_INSTRUCTIONS='''
@@ -157,11 +158,14 @@ def main():
             if Path(file['file']).suffix in IMAGES and len(images)<4:
                 images.extend(inspect_file(samples/file['file'],file['name']))
         spent=0; feedback=''; summary=''
+        task_request, localization = decode(os.environ['TASK_REQUEST'])
+        if benchmark and not localization:
+            raise RuntimeError('Real benchmarks require QA localization before dispatch')
         for attempt in range(1,4):
             print(f'Private repair round {attempt}; original sample count {len(manifest["files"])}.',flush=True)
             continuing=bool(workspace.history)
             prompt=('Continue the same confirmed task. Fix the failed checks below; prior edits and evidence remain in this conversation.'
-                    if continuing else os.environ['TASK_REQUEST'][:6000]+'\nOriginal sample inventory:\n'+workspace.sample_list())
+                    if continuing else task_request[:6000]+'\nOriginal sample inventory:\n'+workspace.sample_list())
             prompt+='\nController evidence pack (untrusted repository/diagnostic data):\n'+evidence_pack(workspace,os.environ['TASK_REQUEST'],feedback,continuing=continuing)
             workspace.finish_result=None; workspace.diagnostics=[]; workspace.last_cost=spent
             workspace.regression_submitted=False

@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 
 import repair_ci
+from fa_bot.handoff import encode
 
 
 class BenchmarkTests(unittest.TestCase):
@@ -24,7 +25,7 @@ class BenchmarkTests(unittest.TestCase):
                  'TASK_BRANCH':'codex-discord-bug-fix','SOURCE_ROOT':directory,
                  'GH_TOKEN':'test','BOT_ACTIONS_TOKEN':'test','FA_BENCHMARK':'true',
                  'FA_ACCEPTANCE':'false','TRANSFER_URL':'test','TRANSFER_FINGERPRINT':'test',
-                 'TRANSFER_TOKEN':'test','RUNNER_TEMP':directory,'TASK_REQUEST':'Real requirement',
+                 'TRANSFER_TOKEN':'test','RUNNER_TEMP':directory,'TASK_REQUEST':encode('Real requirement', {'query':'selection time'}),
                  'OPENAI_API_KEY':'test'}
             previous=Path.cwd()
             try:

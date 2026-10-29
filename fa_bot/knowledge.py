@@ -44,7 +44,7 @@ class Knowledge:
                     continue
                 path = member.name.partition('/')[2]
                 if not (path.endswith(('.md', '.cs')) and
-                        (path.startswith(('docs/', 'src/', 'macOS/src/')) or path.startswith('README'))):
+                        (path.startswith(('docs/', 'src/', 'tests/', 'macOS/src/')) or path.startswith('README'))):
                     continue
                 body = tar.extractfile(member).read().decode('utf-8', 'replace')
                 if path.endswith('.cs'):
@@ -67,8 +67,8 @@ class Knowledge:
         self.chunks, self.df, self.sha = indexed, df, sha
         self.updated = dt.datetime.now(dt.timezone.utc).isoformat()
 
-    async def refresh(self, github):
-        commit = await github.request('GET', f'/repos/{SOURCE_REPO}/commits/dev')
+    async def refresh(self, github, ref='dev'):
+        commit = await github.request('GET', f'/repos/{SOURCE_REPO}/commits/{ref}')
         issues = await github.request('GET', f'/repos/{SOURCE_REPO}/issues?state=all&sort=updated&per_page=100')
         sha = commit['sha']
         async with github.session.get(f'https://api.github.com/repos/{SOURCE_REPO}/tarball/{sha}',

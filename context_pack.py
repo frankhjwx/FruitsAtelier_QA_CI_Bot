@@ -1,5 +1,6 @@
 """Deterministic, bounded evidence for generation and focused repair rounds."""
 from collections import Counter
+from fa_bot.handoff import decode
 import json
 import re
 import subprocess
@@ -16,6 +17,9 @@ ALIASES = {'\u951a\u70b9':'anchor', '\u6ed1\u6761':'slider', '\u5934\u5c3e':'end
 
 
 def query_terms(request):
+    request, localization = decode(request)
+    if localization and isinstance(localization.get('query'), str) and localization['query'].strip():
+        return re.findall(r'[A-Za-z_][A-Za-z0-9_]*', localization['query'])[:24]
     words = re.findall(r'[A-Za-z_][A-Za-z0-9_]*',request)
     counts=Counter(w.lower() for w in words if w.lower() not in STOP and len(w)>2)
     for term, alias in ALIASES.items():
@@ -103,6 +107,21 @@ def evidence_pack(workspace, request, feedback='', continuing=False):
                     add(path,relevant_sections(body,request),3500)
             except (OSError,ValueError):
                 pass
+        _, localization = decode(request)
+        if localization:
+            add('QA LOCALIZATION (untrusted leads; verify against current checkout)',
+                json.dumps(localization, ensure_ascii=False), 2200)
+            for location in localization.get('locations', [])[:3]:
+                try:
+                    path = location['path']
+                    # Commit-relative line numbers are only useful for the same source revision.
+                    if localization.get('commit') != index.sha:
+                        continue
+                    add('QA LOCATED SOURCE '+path,
+                        failure_excerpt(workspace, path, int(location['line'])), 2200)
+                    header(path)
+                except (OSError, ValueError, KeyError, TypeError):
+                    continue
     query = ' '.join(query_terms(request))
     code_pieces=[]
     primary_symbol=''

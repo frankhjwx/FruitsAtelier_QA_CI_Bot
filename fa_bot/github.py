@@ -74,9 +74,11 @@ class GitHub:
         return receipt['sha']
 
     async def dispatch_pr(self, job, sha):
+        from .handoff import decode
+        request, _ = decode(job['request'])
         await self.request('POST', f'/repos/{self.repo}/actions/workflows/discord-pr.yml/dispatches',
             json={'ref': 'main', 'inputs': {'job_id': job['id'], 'commit': sha,
-                  'build_run': str(job['run_id']), 'request': job['request'][:3500]}})
+                              'build_run': str(job['run_id']), 'request': request[:3500]}})
 
     async def public_pulls(self, number=None):
         path = f'/pulls/{int(number)}' if number else '/pulls?state=all&base=dev&head=frankhjwx:codex-discord-bug-fix'

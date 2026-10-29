@@ -36,10 +36,11 @@ def action_message(text, label=None, url=None):
 
 
 class DevelopmentOffer(discord.ui.View):
-    def __init__(self, bot, owner, channel, request, sources=None, attachment_ids=()):
+    def __init__(self, bot, owner, channel, request, sources=None, attachment_ids=(), localization=None):
         super().__init__(timeout=900)
         self.bot, self.owner, self.channel, self.request = bot, owner, channel, request
         self.attachment_ids = attachment_ids
+        self.localization = localization
         self.pending = False
         self.submitted = False
         self.message = None
@@ -63,7 +64,10 @@ class DevelopmentOffer(discord.ui.View):
         try:
             await interaction.response.defer(thinking=True, ephemeral=True)
             try:
-                status = await self.bot.start_job(interaction, self.request, **({'attachment_ids': self.attachment_ids} if self.attachment_ids else {}))
+                options = {'attachment_ids': self.attachment_ids} if self.attachment_ids else {}
+                if self.localization:
+                    options['localization'] = self.localization
+                status = await self.bot.start_job(interaction, self.request, **options)
             except ValueError as error:
                 await interaction.followup.send(str(error), ephemeral=True)
                 return
@@ -88,7 +92,7 @@ class DevelopmentOffer(discord.ui.View):
 def qa_message(reply, bot, owner, channel):
     result = linked_message(reply.text)
     if reply.change_request:
-        result['view'] = DevelopmentOffer(bot, owner, channel, reply.change_request, result['view'], reply.attachment_ids)
+        result['view'] = DevelopmentOffer(bot, owner, channel, reply.change_request, result['view'], reply.attachment_ids, reply.localization)
     return result
 
 

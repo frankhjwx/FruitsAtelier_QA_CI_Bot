@@ -10,7 +10,7 @@ from pathlib import Path
 from tree_sitter import Language, Parser
 import tree_sitter_c_sharp
 
-FORMAT = 'csharp-structure-v2'
+FORMAT = 'csharp-structure-v3'
 DECLARATIONS = {'method_declaration', 'constructor_declaration', 'property_declaration',
                 'field_declaration', 'enum_declaration', 'delegate_declaration',
                 'operator_declaration', 'conversion_operator_declaration', 'local_function_statement'}

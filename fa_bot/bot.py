@@ -17,6 +17,7 @@ from .github import GitHub
 from .knowledge import Knowledge
 from .messages import linked_message, qa_message, action_message, notify_owner
 from .qa import APIError, QAReply, answer
+from .handoff import encode, decode
 from .store import Store
 from .reviews import PackageReview, poll_reviews
 
@@ -98,7 +99,7 @@ class Bot(discord.Client):
                 parts = await asyncio.to_thread(self.attachments.read, user, channel, ids)
             text, cost = await answer(self.http_session, self.api_key, self.knowledge, question, context=context, attachments=parts)
             self.store.settle(str(request_id), cost)
-            return QAReply(text.text, text.change_request, tuple(ids[:3]))
+            return QAReply(text.text, text.change_request, tuple(ids[:3]), text.localization)
         except APIError as error:
             LOG.warning('QA API failure: %s', error)
             if error.region_blocked:
@@ -191,7 +192,7 @@ class Bot(discord.Client):
                         self.store.update(job['id'], 'notification_uncertain')
             await asyncio.sleep(20)
 
-    async def start_job(self, interaction, request, previous=None, attachment_ids=()):
+    async def start_job(self, interaction, request, previous=None, attachment_ids=(), localization=None):
         if not self.eligible(interaction.user.id, interaction.guild_id):
             raise ValueError('This server is not enabled.')
         self.admit(interaction.user.id, "dev")
@@ -214,7 +215,9 @@ class Bot(discord.Client):
                 raise ValueError('This is not the latest task. Use /revise without task_id to continue the latest task.')
             if old['branch'] != WORK_BRANCH:
                 raise ValueError('This task belongs to a retired repair branch. Please submit a new request.')
-            request = f'Original request:\n{old["request"][:2500]}\n\nFollow-up:\n{request}'[:6000]
+            original, localization = decode(old['request'])
+            request = f'Original request:\n{original[:2500]}\n\nFollow-up:\n{request}'[:6000]
+        request = encode(request, localization)
         if previous and not attachment_ids:
             attachment_ids = self.store.job_attachments(previous)
         transfer_token = await asyncio.to_thread(create_transfer, interaction.user.id, interaction.channel_id, key, attachment_ids)
