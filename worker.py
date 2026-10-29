@@ -222,6 +222,8 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
     next_input_bound = None
     premature = 0
     for turn in range(MAX_TURNS):
+        if hasattr(workspace,'handoff_candidate') and workspace.handoff_candidate():
+            return workspace.finish_result['summary'], used
         if compact_evidence(history):
             next_input_bound = None
             print('Compacted earlier query results; source edits and regression remain available.', flush=True)
@@ -314,6 +316,8 @@ def generate(workspace, prompt, api_key, used=0.0, extra_tools=(), extra_instruc
                 next_input_bound += len(json.dumps(tool_output, ensure_ascii=False).encode())
                 if call['name'] == 'remember':
                     next_input_bound += len(workspace.notes.encode())
+        if hasattr(workspace,'handoff_candidate'):
+            workspace.handoff_candidate()
         if getattr(workspace,'finish_result',None):
             return workspace.finish_result['summary'], used
     raise RuntimeError('Task turn limit reached; no branch was published')

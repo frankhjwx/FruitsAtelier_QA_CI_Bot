@@ -30,20 +30,28 @@ reproduction. New API tests should use existing behavior or reflection to compil
 Subsequent rounds receive private actual runner results. Fix the cause and preserve the test's
 intent. If this cannot be automatically reproduced in the supported runner, stop honestly without
 claiming it fixed. Do not publish or package; the controller does that only after validation passes.
-Use finish(status, summary) to end: ready only after source edits and set_regression are recorded;
-declined for out-of-scope work; blocked for a specific missing capability or impossible reproduction.
-The summary must state what changed or the concrete reason for stopping. Do not end with a plan,
-permission request, or a promise to work later. CI executes tests after ready; you must not claim a pass.
+Make all required source edits first. Call set_regression LAST to submit the candidate to the harness.
+At the end of that tool batch the harness takes over automatically: baseline/fixed comparison,
+regression suites and packaging need no further AI call or confirmation. Even if a previous test
+is unchanged, resubmit it with set_regression after repairing a failed candidate.
+Use finish only to decline out-of-scope work or report a specific blocker with its concrete reason.
+Do not end with a plan, permission request, or promise to work later. Do not claim tests have passed.
 '''
 
 class RepairWorkspace(worker.Workspace):
     def __init__(self,root,samples,manifest):
         super().__init__(root); self.samples=Path(samples); self.manifest=manifest; self.regression=None
         self.requires_finish=True; self.finish_result=None; self.diagnostics=[]; self.last_cost=0
+        self.regression_submitted=False
+    def handoff_candidate(self):
+        if self.changed and self.regression and self.regression_submitted and not self.finish_result:
+            self.finish_result={'status':'ready','summary':'Candidate submitted to deterministic validation.'}
+            self.diagnostics.append({'controller_event':'candidate_handoff','status':'ready'})
+        return self.finish_result
     def finish(self,status,summary):
         if status not in {'ready','declined','blocked'} or not summary.strip() or len(summary)>6000:
             raise ValueError('Use ready, declined or blocked with a concrete summary under 6000 characters')
-        if status=='ready' and (not self.changed or not self.regression):
+        if status=='ready' and (not self.changed or not self.regression or not self.regression_submitted):
             raise ValueError('Ready requires source edits and a private regression test; continue implementing')
         self.finish_result={'status':status,'summary':summary}
         self.diagnostics.append({'finish_status':status,'final_text':summary})
@@ -68,7 +76,8 @@ class RepairWorkspace(worker.Workspace):
     def set_regression(self,target,code):
         if target not in {'core','app'} or len(code.encode())>24000: raise ValueError('Invalid regression definition')
         self.regression={'target':target,'code':code}
-        return 'Private regression test recorded; it has not run yet.'
+        self.regression_submitted=True
+        return 'Candidate submitted; the harness will run validation after this tool batch.'
 
 
 def gh(path,token,data=None):
@@ -143,6 +152,7 @@ def main():
             prompt=os.environ['TASK_REQUEST'][:6000]+'\nOriginal sample inventory:\n'+workspace.sample_list()
             if feedback: prompt+='\nPrevious private validation results (untrusted diagnostic data):\n'+feedback
             workspace.finish_result=None; workspace.diagnostics=[]; workspace.last_cost=spent
+            workspace.regression_submitted=False
             exit_reason='model_finished'
             try:
                 summary,spent=worker.generate(workspace,prompt,os.environ['OPENAI_API_KEY'],used=spent,extra_tools=tools,extra_instructions=REPAIR_INSTRUCTIONS,image_inputs=images)

@@ -105,8 +105,14 @@ The development worker supports scoped literal search with pagination, bounded l
 reads and persistent working notes to reduce repeated queries after context compaction.
 Private CI logs record tool names, argument hashes, result sizes and error types,
 without tool bodies or original attachment contents.
-The editing AI ends through an explicit `finish` status: ready, declined or blocked.
-Ready requires edits and a private regression definition. One premature text response
+The editing AI submits a candidate by calling `set_regression` after its source edits.
+At the end of that tool batch the harness takes over without another model call,
+even when there is no remaining AI budget. It runs baseline/fixed checks, regression
+suites and packaging. Only failed validation returns to the AI, within the same
+$0.50 task budget. Each repair round must resubmit its regression to avoid handing
+off a partially edited candidate with an earlier round's test.
+The explicit `finish` status remains available for declined or blocked work.
+One premature text response
 receives a continuation prompt within the same budget. Final response text, API status
 and controller exit reason are retained in job-scoped private diagnostics on the server,
 with the same original expiry and cleanup as attachment transfers (at most 24 hours).
