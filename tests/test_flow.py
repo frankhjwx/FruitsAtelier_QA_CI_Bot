@@ -101,7 +101,8 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
     async def test_revision_requires_owner_and_channel(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'STATE_FILE': str(Path(folder)/'state.sqlite3')}):
             bot = Bot()
-            bot.store.add_job('old', 1, 2, 'codex/discord-111111111111111111', 'Original')
+            bot.store.add_job('old', 1, 2, 'codex-discord-bug-fix', 'Original')
+            bot.store.update('old', 'success')
             class Interaction:
                 id = 123456789012345678
                 guild_id = 1479878482438918297
@@ -111,6 +112,35 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
                 await bot.start_job(Interaction(), 'Change something small', 'old')
             self.assertEqual(bot.store.db.execute('SELECT count(*) FROM charges').fetchone()[0], 0)
             bot.store.db.close()
+
+    async def test_shared_branch_rejects_a_second_active_repair(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'STATE_FILE': str(Path(folder)/'state.sqlite3')}):
+            bot = Bot()
+            try:
+                bot.store.add_job('active', 1, 2, 'codex-discord-bug-fix', 'Original')
+                bot.store.update('active', 'building')
+                interaction = type('Interaction', (), {'id': 123456789012345678,
+                    'guild_id': 1479878482438918297, 'channel_id': 2,
+                    'user': type('User', (), {'id': 3})()})()
+                with self.assertRaisesRegex(ValueError, 'already running'):
+                    await bot.start_job(interaction, 'Change something small')
+                self.assertEqual(bot.store.db.execute('SELECT count(*) FROM charges').fetchone()[0], 0)
+            finally:
+                bot.store.db.close()
+
+    async def test_region_failure_has_actionable_message_without_provider_body(self):
+        from fa_bot.qa import APIError
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'STATE_FILE': str(Path(folder)/'state.sqlite3')}):
+            bot = Bot()
+            bot.http_session = None
+            bot.api_key = 'fake'
+            try:
+                with patch('fa_bot.bot.answer', side_effect=APIError(403, 'unsupported_country_region_territory')):
+                    result = await bot.ask(1, 123, 'Introduce Fruits Atelier')
+                self.assertIn('maintainer must update', result)
+                self.assertEqual(bot.busy, 0)
+            finally:
+                bot.store.db.close()
 
     async def test_uncertain_dispatch_is_not_retried(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'STATE_FILE': str(Path(folder)/'state.sqlite3')}):

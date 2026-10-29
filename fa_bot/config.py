@@ -10,6 +10,7 @@ def secret(name):
 SOURCE_REPO = 'frankhjwx/FruitsAtelier'
 QA_MODEL = 'gpt-6-luna'
 CODE_MODEL = 'gpt-6.1-sol'
+WORK_BRANCH = 'codex-discord-bug-fix'
 GUILDS = {1479878482438918297, 1554882915945414726}
 OWNER = 136638009691996160
 JOB_CAP = 0.50

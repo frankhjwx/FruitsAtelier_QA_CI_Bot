@@ -18,6 +18,14 @@ Keep answers under 1500 characters; cite at most three relevant evidence links.
 '''
 
 
+class APIError(RuntimeError):
+    def __init__(self, status, code=None):
+        self.status = status
+        self.region_blocked = code == 'unsupported_country_region_territory'
+        label = 'unsupported_country_region_territory' if self.region_blocked else 'request_failed'
+        super().__init__(f'OpenAI HTTP {status}: {label}')
+
+
 def output_text(result):
     return '\n'.join(part.get('text', '') for item in result.get('output', [])
                      if item.get('type') == 'message' for part in item.get('content', [])
@@ -46,7 +54,11 @@ async def answer(session, key, knowledge, question):
                                 headers={'Authorization': f'Bearer {key}'},
                                 timeout=aiohttp.ClientTimeout(total=24)) as response:
             if response.status >= 400:
-                raise RuntimeError(f'OpenAI returned HTTP {response.status}')
+                try:
+                    code = (await response.json()).get('error', {}).get('code')
+                except (ValueError, aiohttp.ContentTypeError, AttributeError):
+                    code = None
+                raise APIError(response.status, code)
             result = await response.json()
             usage = result['usage']
             cost += (usage['input_tokens'] * .125 + usage['output_tokens'] * .50) / 1_000_000

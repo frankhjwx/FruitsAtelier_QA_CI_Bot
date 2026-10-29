@@ -13,21 +13,22 @@ on:
         required: true
         type: string
       branch:
-        description: Isolated codex/discord-ID branch
+        description: Shared repair branch
+        default: codex-discord-bug-fix
         required: true
         type: string
 
 permissions:
   contents: read
 concurrency:
-  group: discord-${{ inputs.branch }}
+  group: discord-repair
   cancel-in-progress: false
 
 jobs:
   edit:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 75
     outputs:
       commit: ${{ steps.edit.outputs.commit }}
     steps:
@@ -47,7 +48,7 @@ jobs:
         with:
           script: |
             const branch = process.env.TASK_BRANCH;
-            if (!/^codex\/discord-\d{15,22}$/.test(branch) || !/^\d{15,22}$/.test(process.env.JOB_ID)) {
+            if (branch !== 'codex-discord-bug-fix' || !/^\d{15,22}$/.test(process.env.JOB_ID)) {
               throw new Error('Invalid Discord task identity');
             }
             let ref;
@@ -66,6 +67,7 @@ jobs:
           path: source
       - name: Generate bounded source edits
         id: edit
+        timeout-minutes: 12
         env:
           OPENAI_API_KEY: ${{ secrets.FA_OPENAI_CI_KEY }}
           GH_TOKEN: ${{ secrets.FA_SOURCE_TOKEN }}
@@ -75,12 +77,10 @@ jobs:
           SOURCE_ROOT: ${{ github.workspace }}/source
         run: python controller/worker.py
 
-      - name: Dispatch public editor validation and package
+      - name: Dispatch and wait for public editor package
         env:
           GH_TOKEN: ${{ secrets.FA_SOURCE_TOKEN }}
           JOB_ID: ${{ inputs.job_id }}
           SOURCE_SHA: ${{ steps.edit.outputs.commit }}
           TASK_BRANCH: ${{ inputs.branch }}
-        run: >-
-          gh workflow run discord-preview.yml --repo frankhjwx/FruitsAtelier --ref main
-          -f "job_id=$JOB_ID" -f "commit=$SOURCE_SHA" -f "branch=$TASK_BRANCH"
+        run: python controller/preview.py

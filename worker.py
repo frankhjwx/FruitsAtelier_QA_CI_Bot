@@ -191,7 +191,7 @@ def main():
     if os.getenv('GITHUB_ACTIONS') != 'true':
         raise RuntimeError('Development worker runs only on GitHub Actions')
     key, branch = os.environ['JOB_ID'], os.environ['TASK_BRANCH']
-    if not re.fullmatch(r'\d{15,22}', key) or not re.fullmatch(r'codex/discord-\d{15,22}', branch):
+    if not re.fullmatch(r'\d{15,22}', key) or branch != 'codex-discord-bug-fix':
         raise ValueError('Invalid task identity')
     root = Path(os.environ['SOURCE_ROOT']).resolve()
     parent = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()

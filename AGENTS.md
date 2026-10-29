@@ -8,7 +8,7 @@ or configuration in the editor repository or commit it to the editor's dev branc
 - Server runtime: direct Discord gateway, OpenAI Responses API, public evidence
   retrieval and durable task/budget state. Never run editor builds or tests on
   the server, and never create an artifacts directory there.
-- Editor changes: publish only isolated codex/discord-* branches in
+- Editor changes: publish only to the shared codex-discord-bug-fix branch in
   frankhjwx/FruitsAtelier. Generated source runs only in separate GitHub-hosted
   jobs without OpenAI, Discord or source-write credentials. Do not auto-merge.
 - Secrets: never commit or print credentials. Keep separate QA and CI OpenAI

@@ -7,7 +7,7 @@ workflow handles tests and experimental Windows packages.
 
 This is an independent private repository. Its default `main` branch contains
 the Bot and editing workflow. The editor repository is read at `dev`; development tasks publish
-only isolated `codex/discord-*` branches there. Bot changes do not modify the
+only the shared `codex-discord-bug-fix` branch there. Bot changes do not modify the
 editor's `dev` or `main` branches.
 
 ## User commands
@@ -17,11 +17,11 @@ editor's `dev` or `main` branches.
   cites commit-pinned evidence. The 10–30 second target is a response target,
   not a guarantee of bug reproduction. A lookup has a 26-second deadline.
 - `/template`: concise usage, bug and feature request templates.
-- `/develop`: attempt a small change on a new `codex/discord-<interaction-id>`
-  branch based on `dev`. Generated code and commit summaries are public in the
+- `/develop`: attempt a small change on `codex-discord-bug-fix`. The branch
+  starts from `dev` if absent and retains existing commits between tasks. Generated code and commit summaries are public in the
   editor repository; do not include secrets, personal files or private information.
 - `/revise <task_id> <feedback>`: continue the same branch. Only the original
-  requester in the original channel can continue a task. Each attempt has its
+  requester in the original channel can continue the latest task. Each attempt has its
   own task ID and budget reservation.
 - `/task <task_id>`: retrieve status and the workflow link, including after a
   Discord delivery failure.
@@ -44,7 +44,7 @@ bug is absent.
 Successful editor CI runs provide packages and checksums as GitHub Actions
 artifacts in `frankhjwx/FruitsAtelier`, with seven-day retention. Users must sign
 into GitHub to download them; access to this private Bot repository is not
-required. Windows packages use `0.0.0-alpha.<run-number>` and are for separate test
+required. Windows packages use `0.0.2-alpha.<run-number>` and are for separate test
 installations, not the stable updater feed. macOS regressions run, but this
 workflow does not distribute macOS packages.
 
@@ -65,8 +65,9 @@ usage. Failures retain the reservation. Development reserves $0.50 per attempt;
 unused development reservation is not refunded. The worker also checks each
 model call against the same per-attempt ceiling using a conservative UTF-8 byte
 bound. Some requests will exceed this small-change budget and stop without a
-package. Five daily development attempts per user and five pending jobs globally
-bound the queue. These application limits are not a replacement for account
+package. Five daily development attempts per user and one active repair globally
+bound the queue. The private worker holds its concurrency slot through public
+testing and packaging. These application limits are not a replacement for account
 billing controls and do not include manually dispatched workflows or other apps.
 
 The development worker can search/read repository text and replace exact text

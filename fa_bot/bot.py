@@ -9,10 +9,10 @@ import aiohttp
 import discord
 from discord import app_commands
 
-from .config import GUILDS, OWNER, JOB_CAP, secret
+from .config import GUILDS, OWNER, JOB_CAP, WORK_BRANCH, secret
 from .github import GitHub
 from .knowledge import Knowledge
-from .qa import answer
+from .qa import APIError, answer
 from .store import Store
 
 LOG = logging.getLogger('fa_bot')
@@ -76,6 +76,11 @@ class Bot(discord.Client):
             text, cost = await answer(self.http_session, self.api_key, self.knowledge, question)
             self.store.settle(str(request_id), cost)
             return text
+        except APIError as error:
+            LOG.warning('QA API failure: %s', error)
+            if error.region_blocked:
+                return 'QA is unavailable because this deployment cannot access OpenAI in its region. The maintainer must update the deployment.'
+            return 'The QA provider is unavailable. Please contact the maintainer.'
         except TimeoutError:
             return 'Lookup timed out; please retry shortly.'
         finally:
@@ -152,17 +157,19 @@ class Bot(discord.Client):
         self.admit(interaction.user.id)
         if not 10 <= len(request) <= 3500:
             raise ValueError('Please describe the request in 10–3500 characters.')
-        if self.store.recent_jobs(interaction.user.id) >= 5 or len(self.store.pending()) >= 5:
-            raise ValueError('Development queue limit reached. Please try later.')
+        if self.store.pending():
+            raise ValueError('A repair is already running; please wait for its package result.')
+        if self.store.recent_jobs(interaction.user.id) >= 5:
+            raise ValueError('Daily development limit reached. Please try later.')
         key = str(interaction.id)
-        branch = 'codex/discord-' + key
+        branch = WORK_BRANCH
         if previous:
             old = self.store.job(previous)
             if not old or old['owner'] != str(interaction.user.id) or old['channel'] != str(interaction.channel_id):
                 raise ValueError('Only the original requester in the original channel can revise this task.')
-            if any(j['branch'] == old['branch'] for j in self.store.pending()):
-                raise ValueError('This branch already has a pending job.')
-            branch = old['branch']
+            latest = self.store.latest_job()
+            if latest['id'] != old['id'] or old['branch'] != WORK_BRANCH:
+                raise ValueError('Please continue the latest task; the shared branch has moved on.')
             request = f'Original request:\n{old["request"][:2500]}\n\nFollow-up:\n{request}'[:6000]
         self.store.reserve(key, 'dev', JOB_CAP)
         self.store.add_job(key, interaction.user.id, interaction.channel_id, branch, request)
@@ -184,7 +191,7 @@ class Bot(discord.Client):
             await interaction.response.defer(thinking=True)
             await interaction.followup.send(await self.ask(interaction.user.id, interaction.id, question))
 
-        @self.tree.command(name='develop', description='Try a small fix or feature on an isolated branch')
+        @self.tree.command(name='develop', description='Try a small fix or feature on the shared repair branch')
         async def develop(interaction: discord.Interaction, request: str):
             await interaction.response.defer(thinking=True)
             await interaction.followup.send(await self.start_job(interaction, request))
