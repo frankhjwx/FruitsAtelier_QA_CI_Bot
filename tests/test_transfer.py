@@ -57,7 +57,7 @@ class VerificationTests(unittest.TestCase):
     def test_success_needs_exact_samples_same_test_and_baseline_failure(self):
         results=[{'platform':p,'passed':True,'test_sha256':'abc','sample_hashes':['sample']} for p in ('windows','macos')]
         self.assertFalse(verified(results,'abc',['sample']))
-        results[0].update(baseline={'run':{'exit':42}},fixed={'run':{'exit':0}})
+        results[0].update(baseline={'build':{'exit':0},'run':{'exit':42}},fixed={'build':{'exit':0},'run':{'exit':0}})
         self.assertTrue(verified(results,'abc',['sample']))
         self.assertFalse(verified(results,'other',['sample']))
         results[0]['baseline']['run']['exit']=0

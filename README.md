@@ -2,8 +2,8 @@
 
 Papaya connects Discord directly to the OpenAI Responses API. Its server handles
 questions, evidence retrieval and job tracking. Its private GitHub workflow
-handles source changes. The public FruitsAtelier repository's GitHub-hosted
-workflow handles tests and experimental Windows packages.
+handles source changes and private sample-backed regression. The public FruitsAtelier
+repository's GitHub-hosted workflow repeats release checks and builds experimental Windows packages.
 
 This is an independent private repository. Its default `main` branch contains
 the Bot and editing workflow. The editor repository is read at `dev`; development tasks publish
@@ -26,7 +26,7 @@ editor's `dev` or `main` branches.
   select the latest task automatically. Only the original
   requester in the original channel can continue the latest task. Each attempt has its
   own task ID and budget reservation.
-- `/task <task_id>`: retrieve status and the workflow link, including after a
+- `/task <task_id>`: retrieve status and the direct package link, including after a
   Discord delivery failure.
 
 Replies to Papaya also trigger QA without an explicit mention. The bot reads up
@@ -45,7 +45,8 @@ an explicit mention or a reply to Papaya. Unaddressed conversation is ignored.
 QA identifies feature proposals and bug-fix intent in the same response call.
 When appropriate, it offers a **Modify and test** button for 15 minutes. Only the
 original requester in the same channel can confirm; code editing starts only
-after confirmation. Ordinary questions show no development button. Concurrent
+after confirmation. Ordinary questions show no development button. Large subsystem requests and open-ended prototypes are declined by the model
+without a development proposal; users are asked to narrow the scope. Concurrent
 or repeated clicks cannot dispatch the same offer twice. A busy repair slot
 leaves the offer available to retry until it expires. `/develop` and `/revise`
 remain explicit command shortcuts.

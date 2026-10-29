@@ -17,6 +17,13 @@ class UsageBudgetTests(unittest.TestCase):
             self.assertEqual(request.call_count,2)
             self.assertAlmostEqual(cost,.0025)
 
+    def test_retry_cannot_reset_the_task_budget(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with patch.object(worker,'request_json') as request:
+                with self.assertRaisesRegex(RuntimeError,'budget reached'):
+                    worker.generate(worker.Workspace(folder),'Continue the repair','fake',used=.499)
+                request.assert_not_called()
+
     def test_missing_usage_keeps_full_reservation(self):
         with tempfile.TemporaryDirectory() as folder:
             ws=worker.Workspace(folder)

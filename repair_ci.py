@@ -94,10 +94,12 @@ def failure_feedback(results):
 
 
 def verified(results,digest,hashes):
-    if {r.get('platform') for r in results}!={'windows','macos'}: return False
+    if len(results)!=2 or {r.get('platform') for r in results}!={'windows','macos'}: return False
     if not all(r.get('passed') is True and r.get('test_sha256')==digest and r.get('sample_hashes')==hashes for r in results): return False
     windows=next(r for r in results if r['platform']=='windows')
-    return ((windows.get('baseline',{}).get('run') or {}).get('exit')==42 and
+    return (windows.get('baseline',{}).get('build',{}).get('exit')==0 and
+            windows.get('fixed',{}).get('build',{}).get('exit')==0 and
+            (windows.get('baseline',{}).get('run') or {}).get('exit')==42 and
             (windows.get('fixed',{}).get('run') or {}).get('exit')==0)
 
 
