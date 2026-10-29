@@ -87,7 +87,7 @@ class Bot(discord.Client):
         self.admit(user)
         self.busy += 1
         try:
-            self.store.reserve(str(request_id), 'qa', .02)
+            self.store.reserve(str(request_id), 'qa', .02, owner=user)
             parts = []
             ids = [item['attachment_id'] for item in reversed(context) if 'attachment_id' in item]
             if uploads:
@@ -201,7 +201,7 @@ class Bot(discord.Client):
             raise ValueError(f'Please describe the request in {minimum}-3500 characters.')
         if self.store.repair_active():
             raise ValueError('A repair or PR is already running; please wait for its package or maintainer review.')
-        if self.store.recent_jobs(interaction.user.id) >= 5:
+        if self.store.recent_jobs(interaction.user.id) >= 100:
             raise ValueError('Daily development limit reached. Please try later.')
         key = str(interaction.id)
         branch = WORK_BRANCH

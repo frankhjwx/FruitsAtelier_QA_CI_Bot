@@ -14,6 +14,7 @@ class Store:
         self.db.row_factory = sqlite3.Row
         self.db.executescript('''
           PRAGMA journal_mode=WAL;
+          CREATE TABLE IF NOT EXISTS qa_requests (id TEXT PRIMARY KEY, owner TEXT, created REAL);
           CREATE TABLE IF NOT EXISTS job_attachments (job_id TEXT PRIMARY KEY, ids TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS reviews (
             job_id TEXT PRIMARY KEY, sha TEXT, state TEXT, url TEXT,
@@ -25,7 +26,7 @@ class Store:
             request TEXT, status TEXT, run_id INTEGER, url TEXT, created REAL);
         ''')
 
-    def reserve(self, key, kind, amount):
+    def reserve(self, key, kind, amount, owner=None):
         if kind not in ('qa', 'dev') or amount <= 0:
             raise ValueError('Invalid reservation')
         month = dt.datetime.now(dt.timezone.utc).strftime('%Y-%m')
@@ -33,6 +34,11 @@ class Store:
         try:
             if self.db.execute('SELECT 1 FROM charges WHERE id=?', (key,)).fetchone():
                 raise ValueError('This request has already been processed.')
+            if kind == 'qa' and owner is not None:
+                count = self.db.execute('SELECT count(*) FROM qa_requests WHERE owner=? AND created>?',
+                                        (str(owner), time.time() - 86400)).fetchone()[0]
+                if count >= 200:
+                    raise ValueError('Daily QA limit reached. Please try later.')
             total, category = self.db.execute(
                 'SELECT coalesce(sum(amount),0), coalesce(sum(CASE WHEN kind=? THEN amount ELSE 0 END),0) FROM charges WHERE month=?',
                 (kind, month)).fetchone()
@@ -41,6 +47,8 @@ class Store:
                 raise ValueError('Monthly budget exhausted; please contact the maintainer.')
             self.db.execute('INSERT INTO charges VALUES (?,?,?,?,?)',
                             (key, month, kind, amount, time.time()))
+            if kind == 'qa' and owner is not None:
+                self.db.execute('INSERT INTO qa_requests VALUES (?,?,?)', (key, str(owner), time.time()))
             self.db.commit()
         except Exception:
             self.db.rollback()
