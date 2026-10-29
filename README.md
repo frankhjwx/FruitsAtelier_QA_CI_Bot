@@ -112,6 +112,8 @@ and dispatch editor CI. It is passed only to the trusted
 editing worker; test/build jobs do not receive it. No Discord token is needed
 in GitHub Actions.
 
+On a fresh Debian 13 server, install `python3-venv`, `ca-certificates` and `git`.
+The installer creates the service account if it does not exist.
 On the server, install this directory at `/opt/fruitsatelier-discord`, create
 `/var/lib/fruitsatelier-discord` owned by `fruitsatelier-qabot`, and install the
 unit from `deploy/fruitsatelier-discord.service`. Place the Discord token in
