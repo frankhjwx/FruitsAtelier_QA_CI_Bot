@@ -187,6 +187,26 @@ class TransferRetryTests(unittest.TestCase):
                 os.environ['JOB_ID']='other'
                 with self.assertRaises(ValueError):token_from_environment()
 
+    def test_utf8_event_with_chinese_request_under_windows_default_encoding(self):
+        from ci_transfer import token_from_environment
+        original_read_text = Path.read_text
+
+        def windows_read_text(path, encoding=None, errors=None):
+            return original_read_text(path, encoding=encoding or 'cp1252', errors=errors)
+
+        with tempfile.TemporaryDirectory() as folder:
+            event = Path(folder)/'event.json'
+            event.write_text(json.dumps({'inputs':{
+                'job_id':KEY, 'transfer_token':'test-only-capability',
+                'request':'新增一个编辑器预设主题，重启后保留',
+            }}, ensure_ascii=False), encoding='utf-8')
+            with patch.dict(os.environ,{'GITHUB_EVENT_PATH':str(event),'JOB_ID':KEY},clear=True), \
+                    patch.object(Path,'read_text',windows_read_text):
+                with self.assertRaises(UnicodeDecodeError):event.read_text()
+                self.assertEqual(token_from_environment(),'test-only-capability')
+                os.environ['JOB_ID']='other'
+                with self.assertRaises(ValueError):token_from_environment()
+
     def test_atomic_identical_retry_preserves_content_and_conflicts(self):
         from concurrent.futures import ThreadPoolExecutor
         from fa_bot.transfer import store_immutable

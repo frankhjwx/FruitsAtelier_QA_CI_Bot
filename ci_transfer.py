@@ -19,7 +19,7 @@ class TransferHTTPError(RuntimeError):
 def token_from_environment():
     token = os.environ.get('TRANSFER_TOKEN')
     if not token:
-        event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
+        event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text(encoding='utf-8'))
         inputs = event['inputs']
         if inputs['job_id'] != os.environ['JOB_ID']:
             raise ValueError('Transfer task identity mismatch')
