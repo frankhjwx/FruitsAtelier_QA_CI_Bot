@@ -100,9 +100,8 @@ attachment images are not resent as new messages. Identical query results refer
 back to the retained evidence instead of adding a second full copy. Discovery history is
 retained up to a bounded 180 KB compaction threshold (240 KB hard context limit).
 After four query-only turns without edits, the worker records a concrete implementation
-plan before continuing. All 13 existing Core localization JSON tables may be synchronized separately from
-the eight-file source/documentation limit;
-other JSON configuration remains outside the edit scope in both editing and validation.
+plan before continuing. All 13 existing Core localization JSON tables may be synchronized
+separately from the eight-file source/documentation limit; other JSON configuration remains outside the edit scope in both editing and validation.
 Official cache diagnostics compare each completed response with its predecessor.
 Only diagnostic type, reason and token counts are logged; unavailable or expired
 comparisons do not stop repair. Private round diagnostics also include usage
@@ -141,7 +140,7 @@ distinguishing dev support from released behavior. This is a model judgment grou
 Confirmed proposals carry QA's technical search query, investigation direction, evidence commit,
 and up to six source locations. Locations must come from the evidence returned to QA.
 CI prioritizes these leads and rereads source from its checkout; line-based excerpts are used only
-when the evidence commit matches. Follow-up requests retain the leads as untrusted context.
+when the evidence commit matches. Revision requests run QA again before dispatch.
 The evidence limit excludes opaque encrypted reasoning, which remains in requests and
 under the separate transport limit. Compaction removes only older query bodies, preserving
 the latest tool batch and any original evidence referenced by its duplicate results.
@@ -186,8 +185,8 @@ and line ranges. Identifier splitting supports both exact symbols and component
 words. This is structural and lexical retrieval, not vector embeddings or a
 compiler-resolved call graph; it makes no additional model calls.
 QA searches source and test symbols using the model's technical query, without appending the raw
-user request to that query. QA can follow symbols across up to eight evidence searches/reads (nine model calls), with a 150-second
-wall-clock limit and a $0.02 reservation. Ordinary questions can finish after one search.
+user request to that query. QA can follow symbols across up to eight evidence searches/reads
+(nine model calls), with a 150-second wall-clock limit and a $0.02 reservation. Ordinary questions can finish after one search.
 Follow-up searches can target a source or test path; prior evidence and tool definitions
 remain in the conversation. All development entrances, including `/develop` and `/revise`,
 require implementation-code localization before reserving CI budget or dispatching.

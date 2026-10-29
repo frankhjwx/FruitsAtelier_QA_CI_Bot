@@ -144,7 +144,7 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
     knowledge = copy.copy(knowledge)
     tool = {'type': 'function', 'name': 'search_evidence',
             'description': 'Search public FruitsAtelier documentation, code and recent issues. Results are partial; use read_evidence for more lines.',
-            'parameters': {'type': 'object', 'properties': {'query': {'type': 'string'}, 'prefix': {'type':'string', 'description':'Empty for mixed evidence; repository path prefix for code only.'}},
+            'parameters': {'type': 'object', 'properties': {'query': {'type': 'string'}, 'prefix': {'type':'string', 'description':'Empty for mixed evidence; repository path prefix to restrict code or documentation.'}},
                            'required': ['query', 'prefix'], 'additionalProperties': False}, 'strict': True}
     read_tool = {'type':'function','name':'read_evidence','description':'Read up to 80 lines of indexed public repository evidence at a known path and line.',
                  'parameters':{'type':'object','properties':{'path':{'type':'string'},'start':{'type':'integer'}},
