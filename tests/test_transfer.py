@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
-from fa_bot.transfer import create_transfer, transfer, ci_root
+from fa_bot.transfer import create_transfer, transfer, ci_root, CANDIDATE_LIMIT
 from fa_bot.attachments import TTL, cleanup
 from fa_bot.messages import action_message, notify_owner
 from repair_ci import verified
@@ -25,7 +25,7 @@ class TransferTests(unittest.IsolatedAsyncioTestCase):
         (self.source/'0.osu').write_bytes(b'osu file format v14\n[General]\nMode:2\n')
         (self.source/'manifest.json').write_text(json.dumps([{'file':'0.osu','name':'original.osu'}]))
         self.token=create_transfer(1,2,KEY,[3])
-        app=web.Application(); app.router.add_route('*','/ci/{key}/{item}',transfer)
+        app=web.Application(client_max_size=CANDIDATE_LIMIT); app.router.add_route('*','/ci/{key}/{item}',transfer)
         self.client=TestClient(TestServer(app)); await self.client.start_server()
     async def asyncTearDown(self):
         await self.client.close(); self.env.stop(); self.temp.cleanup()
@@ -44,6 +44,17 @@ class TransferTests(unittest.IsolatedAsyncioTestCase):
         response=await self.client.put(endpoint+'result-1-windows',json={},headers=headers); self.assertEqual(response.status,403)
         response=await self.client.put(endpoint+'result-1-windows',json={'passed':False},headers=tester); self.assertEqual(response.status,200)
         response=await self.client.put(endpoint+'result-1-windows',json={'passed':True},headers=tester); self.assertEqual(response.status,409)
+    async def test_candidate_resources_fit_without_expanding_diagnostic_limit(self):
+        endpoint='/ci/'+KEY+'/'
+        headers={'Authorization':'Bearer '+self.token}
+        body={'changes':{'src/FruitsAtelier.Core/Localization/en.json':'x'*1_100_000}}
+        response=await self.client.put(endpoint+'candidate-1',json=body,headers=headers)
+        self.assertEqual(response.status,200)
+        response=await self.client.put(endpoint+'diagnostic-1',json=body,headers=headers)
+        self.assertEqual(response.status,413)
+        response=await self.client.put(endpoint+'candidate-2',json={'data':'x'*CANDIDATE_LIMIT},headers=headers)
+        self.assertEqual(response.status,413)
+
     async def test_expiry_covers_original_and_transfer_without_extension(self):
         with patch('fa_bot.transfer.time.time',return_value=self.created+TTL+1):
             response=await self.client.get('/ci/'+KEY+'/manifest',headers={'Authorization':'Bearer '+self.token})

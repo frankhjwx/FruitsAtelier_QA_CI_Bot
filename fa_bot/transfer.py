@@ -14,6 +14,9 @@ from aiohttp import web
 from .attachments import TTL, MAX_BATCH, root_path, cleanup
 
 
+CANDIDATE_LIMIT = 8_000_000
+
+
 def ci_root():
     return root_path().parent / 'ci-transfers'
 
@@ -95,7 +98,8 @@ async def transfer(request):
         if (item.startswith('candidate') and role!='edit') or (item.startswith('result') and role!='test'):
             raise web.HTTPForbidden()
         body=await request.read()
-        if len(body)>1_000_000: raise web.HTTPRequestEntityTooLarge(max_size=1_000_000,actual_size=len(body))
+        limit = CANDIDATE_LIMIT if item.startswith('candidate-') else 1_000_000
+        if len(body)>limit: raise web.HTTPRequestEntityTooLarge(max_size=limit,actual_size=len(body))
         json.loads(body)
         path=folder/(item+'.json')
         # Result submissions are immutable; one validation run owns each round.
@@ -115,7 +119,7 @@ async def transfer(request):
 async def start_transfer_server():
     cert=os.getenv('CI_TRANSFER_CERT')
     if not cert: return None
-    app=web.Application(client_max_size=1_000_000)
+    app=web.Application(client_max_size=CANDIDATE_LIMIT)
     app.router.add_route('*','/ci/{key}/{item}',transfer)
     runner=web.AppRunner(app,access_log=None)
     await runner.setup()
