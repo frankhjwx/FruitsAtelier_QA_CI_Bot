@@ -63,6 +63,18 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
         await github.run(4, build=True)
         self.assertEqual(github.request.call_args.args[1], '/repos/frankhjwx/FruitsAtelier/actions/runs/4')
 
+    async def test_download_targets_matching_unexpired_package(self):
+        github = GitHub(None, 'fake', 'bot/repo')
+        github.request = AsyncMock(return_value={'artifacts': [
+            {'id': 1, 'name': 'source-123', 'expired': False},
+            {'id': 2, 'name': 'windows-experimental-456', 'expired': False},
+            {'id': 3, 'name': 'windows-experimental-123', 'expired': False}]})
+        self.assertEqual(await github.package_url(20, '123'),
+                         'https://github.com/frankhjwx/FruitsAtelier/actions/runs/20/artifacts/3')
+        github.request.return_value['artifacts'][-1]['expired'] = True
+        with self.assertRaises(ValueError):
+            await github.package_url(20, '123')
+
     async def test_edit_completion_tracks_public_build_before_notification(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'STATE_FILE': str(Path(folder)/'state.sqlite3')}):
             bot = Bot()
@@ -72,6 +84,7 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
             github = type('Github', (), {
                 'run': AsyncMock(return_value={'id': 10, 'status': 'completed', 'conclusion': 'success', 'html_url': 'private'}),
                 'find_run': AsyncMock(return_value={'id': 20, 'html_url': 'public'}),
+                'package_url': AsyncMock(return_value='https://github.com/test/artifacts/123'),
                 'source_receipt': AsyncMock(return_value='a'*40)})()
             bot.github = github
             with patch('fa_bot.bot.asyncio.sleep', side_effect=asyncio.CancelledError):
@@ -86,7 +99,7 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
                     await bot.poll_jobs()
             github.run.assert_awaited_with(20, build=True)
             self.assertEqual(bot.store.job('123')['status'], 'success')
-            self.assertIn('public', channel.send.call_args.kwargs['content'])
+            self.assertIn('https://github.com/test/artifacts/123', [item.url for item in channel.send.call_args.kwargs['view'].children])
             self.assertNotIn('private', channel.send.call_args.kwargs['content'])
             bot.store.db.close()
 

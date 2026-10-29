@@ -41,6 +41,14 @@ class GitHub:
         repo = SOURCE_REPO if build else self.repo
         return await self.request('GET', f'/repos/{repo}/actions/runs/{run_id}')
 
+    async def package_url(self, run_id, key):
+        data = await self.request('GET', f'/repos/{SOURCE_REPO}/actions/runs/{int(run_id)}/artifacts?per_page=100')
+        found = [a for a in data['artifacts']
+                 if a['name'] == 'windows-experimental-' + key and not a['expired']]
+        if len(found) != 1:
+            raise ValueError('Test package is missing or expired')
+        return f"https://github.com/{SOURCE_REPO}/actions/runs/{int(run_id)}/artifacts/{int(found[0]['id'])}"
+
     async def source_receipt(self, run_id, key):
         data = await self.request('GET', f'/repos/{self.repo}/actions/runs/{run_id}/artifacts')
         found = [a for a in data['artifacts'] if a['name'] == 'source-' + key and not a['expired']]

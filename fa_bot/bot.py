@@ -13,7 +13,7 @@ from .conversation import reply_context
 from .config import GUILDS, OWNER, JOB_CAP, WORK_BRANCH, secret
 from .github import GitHub
 from .knowledge import Knowledge
-from .messages import linked_message, qa_message
+from .messages import linked_message, qa_message, action_message
 from .qa import APIError, QAReply, answer
 from .store import Store
 from .reviews import PackageReview, poll_reviews
@@ -150,18 +150,23 @@ class Bot(discord.Client):
                         elif time.time() - job['created'] > 1800:
                             self.store.update(job['id'], 'build_dispatch_uncertain')
                         continue
+                    status = run['conclusion']
+                    package = await self.github.package_url(run['id'], job['id']) if building and status == 'success' else None
                     # Mark before sending: a Discord timeout must not cause duplicate notifications.
                     self.store.update(job['id'], 'notifying', run['id'], run['html_url'])
                     channel = self.get_channel(int(job['channel'])) or await self.fetch_channel(int(job['channel']))
-                    status = run['conclusion']
-                    link = run['html_url'] if building else 'Code editing did not complete; the maintainer can inspect the private worker log.'
-                    text = (f'Task `{job["id"]}`: **{status}**\n{link}\n'
-                            f'Branch: `{job["branch"]}`\n'
-                            'Successful editor CI runs contain the tested package. '
-                            'Use /revise with this task ID for another attempt.')
-                    payload = linked_message(text, label='Build')
-                    if building and status == 'success' and self.store.review(job['id']):
-                        payload['view'] = PackageReview(self, job['id'], payload['view'])
+                    if package:
+                        text = ('Your test build is ready! Download it below and try your change. '
+                                'GitHub sign-in is required.\n\n'
+                                'If it meets your requirements, click the confirmation button to create a PR for maintainer review. '
+                                'It will not merge automatically. '
+                                'If anything needs adjusting, use /revise and describe what to change.')
+                        payload = action_message(text, 'Download test build', package)
+                        if self.store.review(job['id']):
+                            payload['view'] = PackageReview(self, job['id'], payload['view'])
+                    else:
+                        text = ("I couldn't finish preparing your test build. " if building else "I couldn't complete the requested changes. ")
+                        payload = action_message(text + 'The maintainer can check what went wrong. Use /revise to try again with feedback.')
                     await channel.send(**payload)
                     self.store.update(job['id'], status)
                 except Exception as error:
@@ -202,8 +207,9 @@ class Bot(discord.Client):
         except Exception:
             # The response can be lost after GitHub accepts dispatch. Poll rather than retry.
             LOG.warning('Dispatch outcome uncertain for %s', key)
-        return (f'Task `{key}` accepted. Branch `{branch}`. Budget cap: ${JOB_CAP:.2f}.\n'
-                'Editing, testing and packaging run on GitHub runners. Results will be posted here.')
+        return ('Your request has been accepted. I will try the changes and run the checks. '
+                'I will post the test build here when it is ready, or let you know if something goes wrong.')
+
 
     def register_commands(self):
         @self.tree.command(name='ask', description='Ask a FruitsAtelier usage, feature or bug question')
@@ -243,7 +249,16 @@ class Bot(discord.Client):
             if not job or job['owner'] != str(interaction.user.id) or job['channel'] != str(interaction.channel_id):
                 await interaction.response.send_message('Task not found in this channel.', ephemeral=True)
                 return
-            await interaction.response.send_message(**linked_message(f'{job["status"]}\n{job["url"] or "Awaiting GitHub run discovery"}', label="Build"), ephemeral=True)
+            if job['status'] == 'success':
+                await interaction.response.defer(ephemeral=True)
+                try:
+                    url = await self.github.package_url(job['run_id'], job['id'])
+                    payload = action_message('Your test build is ready. GitHub sign-in is required to download it.', 'Download test build', url)
+                except ValueError:
+                    payload = action_message('This test build is no longer available. Please ask the maintainer for a new build.')
+                await interaction.followup.send(**payload, ephemeral=True)
+            else:
+                await interaction.response.send_message(f'Task status: {job["status"]}', ephemeral=True)
 
         @self.tree.error
         async def error(interaction, error):

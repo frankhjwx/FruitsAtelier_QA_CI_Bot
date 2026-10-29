@@ -2,7 +2,7 @@
 import asyncio
 import logging
 import discord
-from .messages import linked_message
+from .messages import action_message
 
 LOG = logging.getLogger('fa_bot')
 
@@ -11,7 +11,7 @@ class PackageReview(discord.ui.View):
     def __init__(self, bot, key, sources=None):
         super().__init__(timeout=None)
         self.bot, self.key, self.pending = bot, key, False
-        self.button = discord.ui.Button(label='Test passed - Open PR', style=discord.ButtonStyle.success,
+        self.button = discord.ui.Button(label='This build meets my requirements - Create PR', style=discord.ButtonStyle.success,
                                         custom_id='fa-tested-pr:' + key)
         self.button.callback = self.confirm
         self.add_item(self.button)
@@ -58,7 +58,7 @@ async def request_pr(bot, interaction, key):
     except Exception as error:
         # Dispatch may have succeeded; retain the slot and discover the workflow.
         LOG.warning('PR dispatch outcome uncertain: %s', type(error).__name__)
-    return 'PR creation requested for dev. CI will run; only the maintainer can merge it.'
+    return 'I have requested a PR for your tested changes. Automated checks come next; only the maintainer can approve and merge it.'
 
 
 async def poll_reviews(bot):
@@ -84,12 +84,12 @@ async def poll_reviews(bot):
                         continue
                     pr = found[0]
                     bot.store.review_state(key, 'opened', pr['html_url'], pr['number'])
-                    text = f'PR #{pr["number"]} opened for dev. Check CI on the PR; maintainer review and merge are required.\n{pr["html_url"]}'
+                    payload = action_message(f'PR #{pr["number"]} has been created! Your tested changes are ready for automated checks and maintainer review. Only the maintainer can merge them.', 'View PR', pr['html_url'])
                 else:
                     bot.store.review_state(key, 'failed')
-                    text = 'PR creation failed. The maintainer can inspect the private PR workflow. No changes were merged.'
+                    payload = action_message('I could not create the PR. Please ask the maintainer to check the issue. Your changes have not been merged.')
                 channel = bot.get_channel(int(job['channel'])) or await bot.fetch_channel(int(job['channel']))
-                await channel.send(**linked_message(text, label='PR'))
+                await channel.send(**payload)
             except Exception as error:
                 LOG.warning('PR tracking failed for %s: %s', key, type(error).__name__)
         await asyncio.sleep(20)

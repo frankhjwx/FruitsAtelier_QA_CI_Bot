@@ -28,6 +28,13 @@ def linked_message(text, label='Source'):
             'view': view if urls else None, 'suppress_embeds': True}
 
 
+def action_message(text, label=None, url=None):
+    view = discord.ui.View(timeout=None)
+    if url:
+        view.add_item(discord.ui.Button(label=label, url=url))
+    return {'content': text, 'view': view if url else None, 'suppress_embeds': True}
+
+
 class DevelopmentOffer(discord.ui.View):
     def __init__(self, bot, owner, channel, request, sources=None):
         super().__init__(timeout=900)
