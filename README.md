@@ -17,6 +17,12 @@ editor's `dev` or `main` branches.
   cites commit-pinned evidence through compact source buttons below the answer.
   Message bodies omit URLs and disable link previews. The 10–30 second target is a response target,
   not a guarantee of bug reproduction. A lookup has a 26-second deadline.
+Replies to Papaya also trigger QA without an explicit mention. The bot reads up
+to six preceding messages (1,000 characters each) from the same channel and
+reply chain, using only the requester and Papaya messages. Context retrieval
+has a three-second deadline; missing or inaccessible messages shorten context.
+Earlier answers are rechecked against fresh repository evidence.
+
 - `/template`: concise usage, bug and feature request templates.
 - `/develop`: attempt a small change on `codex-discord-bug-fix`. The branch
   starts from `dev` if absent and retains existing commits between tasks. Generated code and commit summaries are public in the
@@ -28,8 +34,9 @@ editor's `dev` or `main` branches.
   Discord delivery failure.
 
 Guild access is limited to the two configured FruitsAtelier servers. Owner DMs
-are supported for questions. Message content is read only for direct bot
-mentions and DMs; privileged Message Content intent is not needed. Slash
+are supported for questions. Enable Message Content intent in the Discord developer portal so replies with
+mentions disabled can be read. The bot responds only to mentions, replies to
+itself, and eligible owner DMs. Slash
 commands are registered per guild. Mention replies do not automatically start
 development: use `/develop` or `/revise` explicitly.
 

@@ -9,6 +9,7 @@ import aiohttp
 import discord
 from discord import app_commands
 
+from .conversation import reply_context
 from .config import GUILDS, OWNER, JOB_CAP, WORK_BRANCH, secret
 from .github import GitHub
 from .knowledge import Knowledge
@@ -25,6 +26,7 @@ TEMPLATE = ('Usage: version, OS, goal, what you tried.\n'
 class Bot(discord.Client):
     def __init__(self):
         intents = discord.Intents.default()
+        intents.message_content = True
         super().__init__(intents=intents, allowed_mentions=discord.AllowedMentions.none())
         self.tree = app_commands.CommandTree(self)
         self.store = Store(os.getenv('STATE_FILE', 'state/bot.sqlite3'))
@@ -69,12 +71,12 @@ class Bot(discord.Client):
         if len(self.cooldowns) > 5000:
             self.cooldowns = {k: v for k, v in self.cooldowns.items() if now - v < 60}
 
-    async def ask(self, user, request_id, question):
+    async def ask(self, user, request_id, question, context=()):
         self.admit(user)
         self.busy += 1
         try:
             self.store.reserve(str(request_id), 'qa', .02)
-            text, cost = await answer(self.http_session, self.api_key, self.knowledge, question)
+            text, cost = await answer(self.http_session, self.api_key, self.knowledge, question, context=context)
             self.store.settle(str(request_id), cost)
             return text
         except APIError as error:
@@ -90,14 +92,15 @@ class Bot(discord.Client):
     async def on_message(self, message):
         if message.author.bot or not self.eligible(message.author.id, message.guild.id if message.guild else None):
             return
-        if message.guild and self.user not in message.mentions:
+        is_reply, context = await reply_context(message, self.user.id)
+        if message.guild and self.user not in message.mentions and not is_reply:
             return
         question = re.sub(r'<@!?\d+>', '', message.content).strip()
         if not question:
             return
         try:
             async with message.channel.typing():
-                text = await self.ask(message.author.id, message.id, question)
+                text = await self.ask(message.author.id, message.id, question, context=context)
             await message.reply(**linked_message(text), mention_author=False)
         except ValueError as error:
             await message.reply(str(error), mention_author=False)
