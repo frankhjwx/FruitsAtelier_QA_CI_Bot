@@ -351,7 +351,8 @@ The Bot serves per-job capabilities over TLS on port 8443. CI pins the certifica
 fingerprint before sending authorization. Editor and validation capabilities have
 separate write permissions; result submissions are immutable. Candidate source payloads
 are bounded to 8 MB to include synchronized language tables; diagnostic and result
-payloads remain bounded to 1 MB. Configure the non-secret
+payloads remain bounded to 1 MB. Transient read transport failures retry up to
+three times; certificate mismatches and immutable writes are not retried. Configure the non-secret
 repository variables `FA_TRANSFER_URL` and `FA_TRANSFER_FINGERPRINT` in the private
 Bot repository. `deploy/configure_transfer.py` creates the server certificate/key
 and prints only its public SHA-256 fingerprint. No additional long-lived GitHub

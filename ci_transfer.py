@@ -17,6 +17,16 @@ class Transfer:
         self.fingerprint,self.key,self.token=fingerprint,key,token
 
     def request(self,item,data=None):
+        attempts = 3 if data is None else 1
+        for attempt in range(attempts):
+            try:
+                return self._request_once(item,data)
+            except (OSError, http.client.HTTPException):
+                if attempt + 1 == attempts:
+                    raise
+                time.sleep(attempt + 1)
+
+    def _request_once(self,item,data=None):
         if not re.fullmatch(r'[A-Za-z0-9_.-]+',item): raise ValueError('Invalid transfer resource')
         connection=http.client.HTTPSConnection(self.host,self.port,context=ssl._create_unverified_context(),timeout=30)
         try:

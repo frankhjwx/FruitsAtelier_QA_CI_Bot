@@ -110,3 +110,21 @@ class DiagnosticTests(unittest.TestCase):
         output=diagnostic_output(b'FAIL original sample assertion\n' + b'PASS unrelated check\n'*2000)
         self.assertIn('FAIL original sample assertion',output)
         self.assertLess(len(output),14500)
+
+
+class TransferRetryTests(unittest.TestCase):
+    def test_transient_reads_retry_but_immutable_writes_do_not(self):
+        from ci_transfer import Transfer
+        client=object.__new__(Transfer)
+        with patch.object(client,'_request_once',side_effect=[TimeoutError(),b'{}']) as request, patch('ci_transfer.time.sleep'):
+            self.assertEqual(client.request('candidate-1'),b'{}')
+            self.assertEqual(request.call_count,2)
+        with patch.object(client,'_request_once',side_effect=TimeoutError()) as request, patch('ci_transfer.time.sleep'):
+            with self.assertRaises(TimeoutError): client.request('candidate-1')
+            self.assertEqual(request.call_count,3)
+        with patch.object(client,'_request_once',side_effect=TimeoutError()) as request:
+            with self.assertRaises(TimeoutError): client.request('result-1-windows',{'passed':False})
+            self.assertEqual(request.call_count,1)
+        with patch.object(client,'_request_once',side_effect=ValueError('Transfer TLS fingerprint mismatch')) as request:
+            with self.assertRaises(ValueError): client.request('candidate-1')
+            self.assertEqual(request.call_count,1)
