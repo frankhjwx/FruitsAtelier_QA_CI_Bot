@@ -21,6 +21,15 @@ def evidence_pack(workspace, request, feedback=''):
     pieces = []
     remaining = 18000
     seen = set()
+    source_headers = {}
+    def header(path):
+        if path in source_headers: return
+        try:
+            body = workspace.path(path).read_text(encoding='utf-8-sig')
+            declarations = re.findall(r'^\s*(?:global\s+)?(?:using\s+[^\n]+|namespace\s+[^\n{;]+[;{]?)', body, re.M)
+            source_headers[path] = '\n'.join(line.strip() for line in declarations)
+        except (OSError, ValueError):
+            pass
     def add(label, body, cap):
         nonlocal remaining
         raw = (label+'\n'+body).encode()[:min(cap,remaining)]
@@ -62,6 +71,7 @@ def evidence_pack(workspace, request, feedback=''):
             marker=(hit['path'],hit['start'])
             if marker in seen: continue
             seen.add(marker)
+            header(hit['path'])
             add(f'{hit["path"]}:{hit["start"]}-{hit["end"]} {hit["symbol"]}',hit['text'],cap)
             code_pieces.append(hit['text'])
             if not primary_symbol:
@@ -77,8 +87,11 @@ def evidence_pack(workspace, request, feedback=''):
                 'SELECT path,start,end,symbol,body FROM chunks WHERE symbol=? OR symbol=? OR symbol LIKE ? LIMIT 4',
                 (symbol,primary_owner+'.'+symbol,symbol+'.%')):
             line=body.splitlines()[0] if body else ''
+            header(path)
             signatures.append(f'{path}:{start} {name}: {line[:200]}')
     add('AVAILABLE API SIGNATURES (use actual members; inspect missing definitions)', '\n'.join(signatures),2500)
+    add('ACTUAL C# IMPORTS AND NAMESPACES (directories are not namespaces)',
+        '\n\n'.join(path+'\n'+body for path,body in source_headers.items()),2000)
     return '\n\n'.join(pieces)
 
 

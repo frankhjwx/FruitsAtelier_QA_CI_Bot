@@ -19,7 +19,7 @@ class ContextPackTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
             files={'src/FruitsAtelier.Core/Anchor.cs':
-                   'class Curve { public bool MoveAnchor(int time) { '+ '/* anchor movement */ '*12+' return true; } }',
+                   'namespace Actual.Domain;\nclass Curve { public bool MoveAnchor(int time) { '+ '/* anchor movement */ '*12+' return true; } }',
                    'tests/Anchor.cs':'class Checks { public void MoveAnchor() { '+'/* anchor test */ '*14+' } }'}
             for name,body in files.items():
                 path=root/name; path.parent.mkdir(parents=True,exist_ok=True); path.write_text(body)
@@ -28,4 +28,5 @@ class ContextPackTests(unittest.TestCase):
                 result=evidence_pack(ws,'move anchor through endpoint')
             self.assertIn('MoveAnchor',result)
             self.assertIn('tests/Anchor.cs',result)
+            self.assertIn('namespace Actual.Domain;',result)
             self.assertLessEqual(len(result.encode()),18100)

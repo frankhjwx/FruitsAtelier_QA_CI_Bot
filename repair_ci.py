@@ -45,7 +45,9 @@ public static class Regression { public static void Run(IReadOnlyList<Sample> sa
 // Construct valid domain objects using verified APIs, execute the requested operation,
 // then throw new RegressionFailure("expected behavior") if an assertion fails.
 } }
-Use existing signatures rather than guessed convenience helpers. Aim to submit the patch and test
+Use the supplied namespace declarations; never infer namespaces from directory names. Private
+methods are not callable by the regression assembly. Use existing signatures rather than guessed
+convenience helpers. Aim to submit the patch and test
 in the same model response once evidence is sufficient. Successful builds and packaging need no AI.
 '''
 
