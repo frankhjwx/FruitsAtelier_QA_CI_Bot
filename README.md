@@ -22,7 +22,8 @@ editor's `dev` or `main` branches.
 - `/develop`: attempt a small change on `codex-discord-bug-fix`. The branch
   starts from `dev` if absent and retains existing commits between tasks. Generated code and commit summaries are public in the
   editor repository; do not include secrets, personal files or private information.
-- `/revise <task_id> <feedback>`: continue the same branch. Only the original
+- `/revise <feedback> [task_id]`: continue the same branch. Omit `task_id` to
+  select the latest task automatically. Only the original
   requester in the original channel can continue the latest task. Each attempt has its
   own task ID and budget reservation.
 - `/task <task_id>`: retrieve status and the workflow link, including after a

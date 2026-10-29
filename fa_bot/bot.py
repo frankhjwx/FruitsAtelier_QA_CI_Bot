@@ -189,8 +189,10 @@ class Bot(discord.Client):
             if not old or old['owner'] != str(interaction.user.id) or old['channel'] != str(interaction.channel_id):
                 raise ValueError('Only the original requester in the original channel can revise this task.')
             latest = self.store.latest_job()
-            if latest['id'] != old['id'] or old['branch'] != WORK_BRANCH:
-                raise ValueError('Please continue the latest task; the shared branch has moved on.')
+            if latest['id'] != old['id']:
+                raise ValueError('This is not the latest task. Use /revise without task_id to continue the latest task.')
+            if old['branch'] != WORK_BRANCH:
+                raise ValueError('This task belongs to a retired repair branch. Please submit a new request.')
             request = f'Original request:\n{old["request"][:2500]}\n\nFollow-up:\n{request}'[:6000]
         self.store.reserve(key, 'dev', JOB_CAP)
         self.store.add_job(key, interaction.user.id, interaction.channel_id, branch, request)
@@ -222,9 +224,14 @@ class Bot(discord.Client):
             await interaction.followup.send(await self.start_job(interaction, request))
 
         @self.tree.command(name='revise', description='Continue your previous development task')
-        async def revise(interaction: discord.Interaction, task_id: str, feedback: str):
+        async def revise(interaction: discord.Interaction, feedback: str, task_id: str | None = None):
             await interaction.response.defer(thinking=True)
-            await interaction.followup.send(await self.start_job(interaction, feedback, task_id))
+            if task_id is None:
+                latest = self.store.latest_job()
+                if not latest:
+                    raise ValueError('No development task is available to revise.')
+                task_id = latest['id']
+            await interaction.followup.send(await self.start_job(interaction, feedback, task_id.strip()))
 
         @self.tree.command(name='template', description='Question and feature request templates')
         async def template(interaction: discord.Interaction):

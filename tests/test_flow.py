@@ -154,6 +154,21 @@ class FlowTests(unittest.IsolatedAsyncioTestCase):
             finally:
                 bot.store.db.close()
 
+    async def test_revise_command_defaults_to_latest_task(self):
+        from types import SimpleNamespace as NS
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'STATE_FILE': str(Path(folder)/'state.sqlite3')}):
+            bot=Bot()
+            try:
+                bot.store.add_job('latest',3,2,'codex-discord-bug-fix','Original request')
+                bot.start_job=AsyncMock(return_value='Accepted')
+                interaction=NS(response=NS(defer=AsyncMock()),followup=NS(send=AsyncMock()))
+                command=bot.tree.get_command('revise')
+                await command.callback(interaction,feedback='Retry')
+                bot.start_job.assert_awaited_once_with(interaction,'Retry','latest')
+                self.assertFalse(next(p for p in command.parameters if p.name=='task_id').required)
+            finally:
+                bot.store.db.close()
+
     async def test_region_failure_has_actionable_message_without_provider_body(self):
         from fa_bot.qa import APIError
         with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {'STATE_FILE': str(Path(folder)/'state.sqlite3')}):
