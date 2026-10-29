@@ -42,7 +42,10 @@ class Bot(discord.Client):
         self.api_key = secret('OPENAI_API_KEY')
         for guild in GUILDS:
             self.tree.copy_global_to(guild=discord.Object(id=guild))
-            await self.tree.sync(guild=discord.Object(id=guild))
+            try:
+                await self.tree.sync(guild=discord.Object(id=guild))
+            except discord.Forbidden:
+                LOG.warning('Command registration unavailable for guild %s; check the bot invitation', guild)
         self.workers = [asyncio.create_task(self.sync_knowledge()), asyncio.create_task(self.poll_jobs())]
 
     async def close(self):

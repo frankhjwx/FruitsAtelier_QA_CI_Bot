@@ -78,8 +78,20 @@ read-only repository permissions. No changes are merged automatically.
 
 ## Deployment
 
+On the maintainer's Windows computer, run `python deploy/setup_wizard.py` for
+one-session configuration. The local window accepts the QA and CI OpenAI keys
+and the two scoped GitHub tokens described below. It provides prefilled GitHub
+token-creation links and the Discord invitation link. It checks access, saves
+the CI secrets through the locally authenticated GitHub CLI, and installs the
+server credentials over the existing host-verified SSH connection. Secrets are
+passed through stdin, never command-line arguments or local files. It performs
+one small Responses request per OpenAI key to verify access. Startup after save
+is optional. The window clears its fields after successful configuration.
+
 Requires Python 3.13+, a Discord bot with View Channel and Send Messages
 permissions, and the `applications.commands` scope.
+Command registration skips configured guilds where the bot is not yet invited,
+so an available test guild can be used before the production invitation.
 Install `requirements.txt` in a dedicated virtual environment. The server stores
 only SQLite state and credentials; it never runs editor tests/builds or creates
 an `artifacts/` directory.
