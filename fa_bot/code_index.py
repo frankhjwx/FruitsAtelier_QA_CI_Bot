@@ -87,7 +87,9 @@ class CodeIndex:
         rows = self.db.execute('''SELECT path,start,end,symbol,body
             FROM chunks WHERE chunks MATCH ? AND path LIKE ? ORDER BY bm25(chunks,0,0,0,0,0,5,1) LIMIT 200''',
                                (expression,prefix+'%')).fetchall()
-        rows.sort(key=lambda row: -sum(weights[t] for t in set(words(row[3].rsplit('.',1)[-1])) & set(terms)))
+        # Preserve BM25 relevance for concept queries; exact symbol lookup takes precedence.
+        exact = query.strip().casefold()
+        rows.sort(key=lambda row: row[3].casefold() != exact and row[3].rsplit('.',1)[-1].casefold() != exact)
         result = []
         seen = set()
         for path, start, end, symbol, body in rows:

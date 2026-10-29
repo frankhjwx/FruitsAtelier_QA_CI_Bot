@@ -181,7 +181,7 @@ and line ranges. Identifier splitting supports both exact symbols and component
 words. This is structural and lexical retrieval, not vector embeddings or a
 compiler-resolved call graph; it makes no additional model calls.
 QA searches source and test symbols using the model's technical query, without appending the raw
-user request to that query. QA can follow symbols across up to six searches (seven model calls), with a 150-second
+user request to that query. QA can follow symbols across up to eight evidence searches/reads (nine model calls), with a 150-second
 wall-clock limit and a $0.02 reservation. Ordinary questions can finish after one search.
 Follow-up searches can target a source or test path; prior evidence and tool definitions
 remain in the conversation. All development entrances, including `/develop` and `/revise`,

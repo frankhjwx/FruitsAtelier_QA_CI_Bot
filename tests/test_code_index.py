@@ -51,3 +51,26 @@ public class Curve {
         self.assertTrue(index.search('" TryMoveAnchor OR * ('))
         self.assertEqual(index.search('TryMoveAnchor',budget=1),[])
         self.assertEqual(index.search(''),[])
+
+
+class KnowledgeReadTests(unittest.TestCase):
+    def test_scoped_document_search_and_line_read(self):
+        from fa_bot.knowledge import Knowledge, terms
+        from collections import Counter
+        knowledge=Knowledge()
+        knowledge.sha='a'*40
+        body='Header\nF03 timestamp measurement\nDetails'
+        knowledge.chunks=[('docs/Tasks.md',f'https://github.com/frankhjwx/FruitsAtelier/blob/{knowledge.sha}/docs/Tasks.md#L61',body,Counter(terms(body)))]
+        knowledge.df=Counter(terms(body))
+        self.assertEqual(knowledge.search('F03',prefix='docs/')[0]['source'],'docs/Tasks.md')
+        self.assertIn('62: F03 timestamp measurement',knowledge.read_evidence('docs/Tasks.md',62)[0]['text'])
+        self.assertEqual(knowledge.read_evidence('../../etc/passwd',1),[])
+
+    def test_code_read_tracks_requested_line_range(self):
+        from fa_bot.knowledge import Knowledge
+        knowledge=Knowledge(); knowledge.sha='a'*40
+        knowledge.code_index=CodeIndex(knowledge.sha)
+        knowledge.code_index.add('src/Selection.cs','class Selection {\n public int Count => 2;\n public int Other => 3;\n}')
+        result=knowledge.read_evidence('src/Selection.cs',2)[0]
+        self.assertIn('2:  public int Count => 2;',result['text'])
+        self.assertNotIn('1: class',result['text'])

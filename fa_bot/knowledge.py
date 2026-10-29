@@ -82,7 +82,7 @@ class Knowledge:
         await asyncio.to_thread(self.load, bytes(archive), sha, issues)
 
     def search(self, query, limit=7, prefix=""):
-        if prefix:
+        if prefix and not prefix.startswith(('docs/', 'README')):
             rows = self.code_index.search(query, limit=5, budget=10000, prefix=prefix) if self.code_index else []
             return [{"source": f'{r["path"]} ({r["symbol"]})',
                      "url": f'https://github.com/{SOURCE_REPO}/blob/{r["sha"]}/{r["path"]}#L{r["start"]}',
@@ -90,15 +90,39 @@ class Knowledge:
         query_terms = set(terms(query))
         scores = []
         for path, url, body, counts in self.chunks:
+            if prefix and not path.startswith(prefix):
+                continue
             score = sum(math.log(1 + len(self.chunks)/(1+self.df[t])) * min(counts[t], 3)
                         for t in query_terms if counts[t])
             if path.startswith(('docs/', 'README')):
                 score *= 1.3
             if score:
                 scores.append((score, path, url, body))
-        code = self.code_index.search(query, limit=min(3,limit), budget=9000) if self.code_index else []
+        code = self.code_index.search(query, limit=min(3,limit), budget=9000) if self.code_index and not prefix else []
         results = [{'source':f'{r["path"]} ({r["symbol"]})',
                     'url':f'https://github.com/{SOURCE_REPO}/blob/{r["sha"]}/{r["path"]}#L{r["start"]}',
                     'text':r['text']} for r in code]
         docs = [{'source': p, 'url': u, 'text': b} for _, p, u, b in sorted(scores, reverse=True)]
         return (docs[:max(0,limit-len(results))] + results)[:limit]
+
+
+    def read_evidence(self, path, start=1):
+        """Read bounded indexed public text, without filesystem or URL access."""
+        start = max(1, int(start))
+        lines = {}
+        if path.endswith('.cs') and self.code_index:
+            rows = self.code_index.db.execute(
+                'SELECT start,body FROM chunks WHERE path=? AND CAST(start AS INTEGER)<? AND CAST(end AS INTEGER)>=? ORDER BY CAST(start AS INTEGER)',
+                (path,start+80,start)).fetchall()
+        else:
+            rows = [(int(url.rsplit('#L',1)[-1]),body) for name,url,body,_ in self.chunks
+                    if name == path and '#L' in url]
+        for first,body in rows:
+            for number,line in enumerate(body.splitlines(),int(first)):
+                if start <= number < start+80:
+                    lines[number]=line
+        if not lines:
+            return []
+        body='\n'.join(f'{number}: {line}' for number,line in sorted(lines.items()))
+        return [{'source':f'{path}:{start}', 'url':f'https://github.com/{SOURCE_REPO}/blob/{self.sha}/{path}#L{start}',
+                 'text':body[:7000]}]

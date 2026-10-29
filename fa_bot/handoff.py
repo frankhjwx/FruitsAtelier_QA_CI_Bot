@@ -8,13 +8,13 @@ from .config import SOURCE_REPO
 def locator(query, direction, sources, evidence, sha):
     selected = []
     for item in evidence:
-        if item.get('source') not in sources:
-            continue
         url = urlsplit(item.get('url', ''))
         prefix = f'/{SOURCE_REPO}/blob/{sha}/'
         if url.hostname != 'github.com' or not url.path.startswith(prefix):
             continue
         path = unquote(url.path[len(prefix):])
+        if not any(value in sources for value in (item.get('source'), item.get('url'), path)):
+            continue
         if not path.startswith(('src/', 'tests/', 'macOS/', 'docs/')) or '..' in path.split('/'):
             continue
         line = re.fullmatch(r'L(\d+)(?:-L\d+)?', url.fragment)
