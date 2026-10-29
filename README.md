@@ -176,7 +176,7 @@ unused development reservation is not refunded. PR creation uses no model call. 
 Completed calls use reported token counts and cache breakdowns. The next call
 reserves the maximum output plus reported prior tokens and a UTF-8 byte bound
 for new tool results; missing usage retains the full conservative reservation. Some requests will exceed this small-change budget and stop without a
-package. Each user can make 200 QA requests and 100 development attempts per rolling
+package. Each user can make 2000 QA requests and 100 development attempts per rolling
 24 hours. QA counting starts when this limit is deployed. One active repair globally
 bound the queue. The private worker holds its concurrency slot through public
 testing and packaging. An uncertain dispatch retains the repair slot until a

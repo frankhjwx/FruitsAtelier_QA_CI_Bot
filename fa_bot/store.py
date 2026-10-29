@@ -41,7 +41,7 @@ class Store:
             if kind == 'qa' and owner is not None:
                 count = self.db.execute('SELECT count(*) FROM qa_requests WHERE owner=? AND created>?',
                                         (str(owner), time.time() - 86400)).fetchone()[0]
-                if count >= 200:
+                if count >= 2000:
                     raise ValueError('Daily QA limit reached. Please try later.')
             total, category = self.db.execute(
                 'SELECT coalesce(sum(amount),0), coalesce(sum(CASE WHEN kind=? THEN amount ELSE 0 END),0) FROM charges WHERE month=?',

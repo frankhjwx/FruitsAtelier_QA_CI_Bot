@@ -11,7 +11,7 @@ class DailyLimitsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'state.sqlite3'
             store = Store(path)
-            for i in range(200):
+            for i in range(2000):
                 store.reserve(str(i), 'qa', .001, owner=1)
             store.db.close()
             store = Store(path)
