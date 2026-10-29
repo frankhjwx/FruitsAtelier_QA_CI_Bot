@@ -16,10 +16,7 @@ from .qa import answer
 from .store import Store
 
 LOG = logging.getLogger('fa_bot')
-TEMPLATE = ('使用问题：版本 / Windows 或 macOS / 想完成什么 / 已尝试什么\n'
-            'Bug：版本 / 最短复现步骤 / 预期结果 / 实际结果 / 脱敏示例\n'
-            '小功能：使用场景 / 期望行为 / 一个具体例子\n'
-            'Usage: version, OS, goal, what you tried.\n'
+TEMPLATE = ('Usage: version, OS, goal, what you tried.\n'
             'Bug: version, steps, expected vs actual, sanitized example.\n'
             'Feature: use case, desired behavior, one concrete example.')
 
@@ -64,9 +61,9 @@ class Bot(discord.Client):
     def admit(self, user):
         now = time.monotonic()
         if now - self.cooldowns.get(user, -100) < 10:
-            raise ValueError('Please wait 10 seconds before another request. / 请稍后重试。')
+            raise ValueError('Please wait 10 seconds before another request.')
         if self.busy >= 3:
-            raise ValueError('The bot is busy; please retry shortly. / 当前繁忙，请稍后重试。')
+            raise ValueError('The bot is busy; please retry shortly.')
         self.cooldowns[user] = now
         if len(self.cooldowns) > 5000:
             self.cooldowns = {k: v for k, v in self.cooldowns.items() if now - v < 60}
@@ -80,7 +77,7 @@ class Bot(discord.Client):
             self.store.settle(str(request_id), cost)
             return text
         except TimeoutError:
-            return '本次查询超时，暂时无法可靠确认；请稍后重试。 / Lookup timed out; please retry shortly.'
+            return 'Lookup timed out; please retry shortly.'
         finally:
             self.busy -= 1
 
@@ -100,7 +97,7 @@ class Bot(discord.Client):
             await message.reply(str(error), mention_author=False)
         except Exception as error:
             LOG.warning('QA failed: %s', type(error).__name__)
-            await message.reply('查询暂时不可用，请稍后重试。 / Lookup unavailable; please retry later.', mention_author=False)
+            await message.reply('Lookup unavailable; please retry later.', mention_author=False)
 
     async def sync_knowledge(self):
         while True:
@@ -140,8 +137,7 @@ class Bot(discord.Client):
                     text = (f'Task `{job["id"]}`: **{status}**\n{link}\n'
                             f'Branch: `{job["branch"]}`\n'
                             'Successful editor CI runs contain the tested package. '
-                            'Use /revise with this task ID for another attempt.\n'
-                            '成功任务可在运行页下载测试包；继续修改请使用 /revise。')
+                            'Use /revise with this task ID for another attempt.')
                     await channel.send(text)
                     self.store.update(job['id'], status)
                 except Exception as error:
@@ -177,7 +173,7 @@ class Bot(discord.Client):
             # The response can be lost after GitHub accepts dispatch. Poll rather than retry.
             LOG.warning('Dispatch outcome uncertain for %s', key)
         return (f'Task `{key}` accepted. Branch `{branch}`. Budget cap: ${JOB_CAP:.2f}.\n'
-                '修改、测试和打包在 GitHub runner 执行，结果会回到本频道。')
+                'Editing, testing and packaging run on GitHub runners. Results will be posted here.')
 
     def register_commands(self):
         @self.tree.command(name='ask', description='Ask a FruitsAtelier usage, feature or bug question')
@@ -213,7 +209,7 @@ class Bot(discord.Client):
         @self.tree.error
         async def error(interaction, error):
             cause = getattr(error, 'original', error)
-            text = str(cause) if isinstance(cause, ValueError) else 'Request failed; please contact the maintainer. / 请求失败，请联系维护者。'
+            text = str(cause) if isinstance(cause, ValueError) else 'Request failed; please contact the maintainer.'
             LOG.warning('Command failed: %s', type(cause).__name__)
             if interaction.response.is_done():
                 await interaction.followup.send(text, ephemeral=True)

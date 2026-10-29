@@ -62,7 +62,7 @@ def run_command(args, data=None, timeout=60):
                             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     if result.returncode:
         # Provider errors may repeat credentials. Show the operation and status only.
-        raise RuntimeError(f'{Path(args[0]).name} 操作失败（退出码 {result.returncode}），请检查登录、网络或权限。')
+        raise RuntimeError(f'{Path(args[0]).name} failed (exit code {result.returncode}). Check authentication, network and permissions.')
     return result.stdout
 
 
@@ -75,46 +75,46 @@ def api(url, key, data=None):
         with urllib.request.urlopen(request, timeout=35) as response:
             return json.load(response)
     except urllib.error.HTTPError as error:
-        raise RuntimeError(f'认证或权限检查失败：HTTP {error.code}。请检查当前这项密钥及权限。') from None
+        raise RuntimeError(f'Authentication or permission check failed: HTTP {error.code}. Check this credential and its permissions.') from None
     except (urllib.error.URLError, TimeoutError):
-        raise RuntimeError('网络连接失败或超时，请稍后重试。') from None
+        raise RuntimeError('Connection failed or timed out. Please try again later.') from None
 
 
 def configure(values, start, report):
     qa, ci, server, source = [values[k].strip() for k in ('qa', 'ci', 'server', 'source')]
     if any(len(v) < 20 or '\n' in v or '\r' in v for v in (qa, ci, server, source)):
-        raise ValueError('请填写四项完整密钥，每项只填一行。')
-    report('检查本机 GitHub 登录与 SSH 连接…')
+        raise ValueError('Enter all four complete credentials, one line each.')
+    report('Checking local GitHub authentication and SSH connectivity...')
     run_command(['gh', 'auth', 'status'])
     run_command(ssh_command('test -f /opt/fruitsatelier-discord/deploy/configure.py'))
-    for label, key, repos in [('服务器 GitHub Token', server, [BOT_REPO, SOURCE_REPO]),
+    for label, key, repos in [('Server GitHub Token', server, [BOT_REPO, SOURCE_REPO]),
                              ('CI GitHub Token', source, [SOURCE_REPO])]:
-        report('检查' + label + '…')
+        report('Checking ' + label + '...')
         for repo in repos:
             api('https://api.github.com/repos/' + repo + '/actions/workflows', key)
     for label, key, model in [('QA OpenAI Key', qa, 'gpt-6-luna'),
                               ('CI OpenAI Key', ci, 'gpt-6.1-sol')]:
-        report('检查 ' + label + ' 的模型访问权限（一次极小 API 请求）…')
+        report('Checking model access for ' + label + ' (one small API request)...')
         api('https://api.openai.com/v1/responses', key, {
             'model': model, 'input': 'Reply OK.', 'max_output_tokens': 64,
             'reasoning': {'effort': 'low'}, 'store': False})
-    report('保存 CI 密钥到私有 Bot 仓库的 GitHub Secrets…')
+    report('Saving CI credentials to GitHub Secrets in the private Bot repository...')
     run_command(['gh', 'secret', 'set', 'FA_OPENAI_CI_KEY', '--repo', BOT_REPO], ci)
     run_command(['gh', 'secret', 'set', 'FA_SOURCE_TOKEN', '--repo', BOT_REPO], source)
-    report('保存 QA 密钥和服务器 Token 到服务器…')
+    report('Saving the QA key and server token on the server...')
     run_command(ssh_command('python3 -c ' + shlex.quote(REMOTE_INSTALL)),
                 json.dumps({'openai-key': qa, 'github-token': server}))
     if start:
-        report('启用并启动 Bot 服务…')
+        report('Enabling and starting the Bot service...')
         run_command(ssh_command('systemctl enable fruitsatelier-discord && systemctl restart fruitsatelier-discord'))
-    report('配置已保存。' + ('服务已收到启动命令，接下来检查上线状态。' if start else '服务保持当前状态。'))
+    report('Configuration saved. ' + ('Service start requested; verify online status next.' if start else 'Service state unchanged.'))
 
 
 def main():
     import tkinter as tk
     from tkinter import ttk
     root = tk.Tk()
-    root.title('FruitsAtelier Bot · 一次性配置')
+    root.title('FruitsAtelier Bot - One-time setup')
     root.geometry('900x720')
     root.minsize(800, 680)
     canvas = tk.Canvas(root, highlightthickness=0)
@@ -126,23 +126,23 @@ def main():
     window = canvas.create_window((0, 0), window=frame, anchor='nw')
     frame.bind('<Configure>', lambda event: canvas.configure(scrollregion=canvas.bbox('all')))
     canvas.bind('<Configure>', lambda event: canvas.itemconfigure(window, width=event.width))
-    ttk.Label(frame, text='一次配置 QA、CI 和服务器', font=('Microsoft YaHei UI', 17, 'bold')).pack(anchor='w')
-    ttk.Label(frame, text='密钥不会写入本机文件、聊天或日志。保存时会进行两次极小的 OpenAI API 权限检查。',
+    ttk.Label(frame, text='Set up QA, CI and the server', font=('Segoe UI', 17, 'bold')).pack(anchor='w')
+    ttk.Label(frame, text='Credentials are not saved to local files, chat or logs. Saving makes two small OpenAI API requests to check access.',
               wraplength=840).pack(anchor='w', pady=(6, 16))
     entries = {}
     fields = [
-        ('qa', '1. OpenAI · fruitsatelier-qa', '填入你已经创建的 QA Key。', None),
-        ('ci', '2. OpenAI · fruitsatelier-ci', '填入你已经创建的 CI Key。', None),
-        ('server', '3. GitHub · 服务器 Token',
-         'Repository access 选 Only select repositories：FruitsAtelier_QA_CI_Bot 和 FruitsAtelier。\n权限：Actions = Read and write；Contents = Read-only。', token_link('server')),
+        ('qa', '1. OpenAI - fruitsatelier-qa', 'Enter the QA key you created.', None),
+        ('ci', '2. OpenAI - fruitsatelier-ci', 'Enter the CI key you created.', None),
+        ('server', '3. GitHub - Server Token',
+         'Only select repositories: FruitsAtelier_QA_CI_Bot and FruitsAtelier.\nPermissions: Actions = Read and write; Contents = Read-only.', token_link('server')),
         ('source', '4. GitHub · CI Token',
-         'Repository access 选 Only select repositories：只选 FruitsAtelier。\n权限：Actions 和 Contents 均为 Read and write。', token_link('ci'))]
+         'Only select repositories: FruitsAtelier.\nPermissions: Actions and Contents = Read and write.', token_link('ci'))]
     for key, label, description, url in fields:
         row = ttk.Frame(frame)
         row.pack(fill='x', pady=(0, 4))
         ttk.Label(row, text=label, font=('Microsoft YaHei UI', 10, 'bold')).pack(side='left')
         if url:
-            ttk.Button(row, text='打开预填创建页', command=lambda u=url: webbrowser.open(u)).pack(side='right')
+            ttk.Button(row, text='Open token creation page', command=lambda u=url: webbrowser.open(u)).pack(side='right')
         ttk.Label(frame, text=description, wraplength=840).pack(anchor='w')
         entry = ttk.Entry(frame, show='•', font=('Consolas', 11))
         entry.pack(fill='x', pady=(4, 12))
@@ -150,11 +150,11 @@ def main():
     invite = 'https://discord.com/oauth2/authorize?' + urllib.parse.urlencode({
         'client_id': '1554883096560537681', 'scope': 'bot applications.commands',
         'permissions': '274877910016', 'guild_id': '1479878482438918297', 'disable_guild_select': 'true'})
-    ttk.Button(frame, text='将 Bot 邀请到 FruitsAtelier 正式服务器（目前仅在测试服）',
+    ttk.Button(frame, text='Invite the Bot to the FruitsAtelier production server',
                command=lambda: webbrowser.open(invite)).pack(anchor='w', pady=(0, 8))
     start = tk.BooleanVar(value=True)
-    ttk.Checkbutton(frame, text='保存成功后启动 Bot', variable=start).pack(anchor='w')
-    status = tk.StringVar(value='填写后点击“一次保存并配置”。无需在终端粘贴密钥。')
+    ttk.Checkbutton(frame, text='Start the Bot after saving', variable=start).pack(anchor='w')
+    status = tk.StringVar(value='Complete the fields, then click Save and configure. No terminal input is needed.')
     ttk.Label(frame, textvariable=status, wraplength=840).pack(anchor='w', pady=12)
     events = queue.Queue()
 
@@ -172,9 +172,9 @@ def main():
                 events.put(('status', text))
             try:
                 configure(values, should_start, report)
-                events.put(('done', '已完成配置。可关闭窗口并回到聊天，继续验收问答和测试包。'))
+                events.put(('done', 'Setup complete. Close this window and return to chat to verify answers and test packages.'))
             except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired) as error:
-                message = str(error) if isinstance(error, (RuntimeError, ValueError)) else '本机命令失败或超时，请检查 gh、ssh 和网络连接。'
+                message = str(error) if isinstance(error, (RuntimeError, ValueError)) else 'A local command failed or timed out. Check gh, ssh and network connectivity.'
                 events.put(('error', stage + '\n' + message))
             finally:
                 values.clear()
@@ -194,7 +194,7 @@ def main():
             pass
         root.after(100, poll)
 
-    button = ttk.Button(frame, text='一次保存并配置', command=submit)
+    button = ttk.Button(frame, text='Save and configure', command=submit)
     button.pack(anchor='e')
     root.after(100, poll)
     root.mainloop()

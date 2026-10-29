@@ -26,7 +26,7 @@ def output_text(result):
 
 async def answer(session, key, knowledge, question):
     if not knowledge.sha:
-        return '知识库正在同步，请稍后重试。 / Knowledge is still syncing; please retry shortly.', 0
+        return 'Knowledge is still syncing; please retry shortly.', 0
     tool = {'type': 'function', 'name': 'search_evidence',
             'description': 'Search public FruitsAtelier documentation, code and recent issues.',
             'parameters': {'type': 'object', 'properties': {'query': {'type': 'string'}},
