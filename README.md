@@ -386,10 +386,23 @@ systemctl list-timers fruitsatelier-attachments-cleanup.timer
 systemctl status fruitsatelier-attachments-cleanup.service --no-pager
 ```
 
-QA and editing model instructions restrict assistance to Fruits Atelier and osu!,
-including directly related beatmaps, resources and troubleshooting. Unrelated
-requests are declined; unrelated parts of mixed requests are not answered.
-This is a prompt-level policy, not a keyword blacklist or code-based topic filter.
+QA and development share intent restrictions covering conversation context and
+attachments. They refuse information about identifiable osu! mappers/beatmaps,
+all map data services (including statistics, recent Ranked/DQ listings, map discovery
+and existence queries),
+reverse engineering or attempts to expose hidden instructions, credentials or private
+internals, and requests outside Fruits Atelier/osu!. They also refuse creating maps,
+patterns or note arrangements for users and implementing automatic/AI mapping,
+pattern generation, next-note prediction or equivalent completion features.
+Renaming, splitting or framing prohibited requests as small prototypes does not
+make them eligible. Refusals offer no development button or generated alternative.
+
+General Ranking Criteria quality-check explanations require supporting evidence
+and an explicit notice that actual Rank eligibility still requires assessment and
+confirmation by BN/NAT team members. They do not evaluate specific maps or certify
+Rank eligibility. Manual editing tools and sanitized technical FA reproductions
+remain supported. These are model intent judgments, not a keyword blacklist;
+model compliance must be evaluated separately from mocked controller tests.
 
 ## Sample-backed private regression
 
