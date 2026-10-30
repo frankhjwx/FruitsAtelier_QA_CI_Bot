@@ -38,6 +38,9 @@ and confirmation. Distinguish required tags from optional suggestions.
 Recommended tags must have evidence: credited contributors, alternate names, language and media
 source only when established. Do not invent mapper usernames, genres or required tags belonging
 to an unknown map. Omit unverified genre tags entirely, including optional or tentative suggestions.
+Omit unsupported optional tags silently, without explaining why no genre was suggested. Do not
+append generic conditional advice about alternate/short-version markers; mention such markers
+only when relevant to the identified recording or specifically requested by the user.
 Preserve primary-source title punctuation and word order unless a specific RC rule requires an
 adjustment; explain that adjustment. Do not introduce parentheses just for presentation.
 If credits/version are ambiguous, label unresolved fields and ask one question.
