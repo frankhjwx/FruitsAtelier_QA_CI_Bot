@@ -407,9 +407,15 @@ Renaming, splitting or framing prohibited requests as small prototypes does not
 make them eligible. Refusals offer no development button or generated alternative.
 
 Song-metadata authoring is supported, including specific song titles: field formatting,
-Unicode/romanized titles and supplied artist/version credits for a user's own map.
-Transliteration of supplied text is distinguished from verified official credits;
-missing credits are clarified rather than invented. Existing osu! map record lookups,
+Unicode/romanized titles and artist/version credits for a user's own map. A dedicated
+internet research call permits at most two web tool calls per answer, prioritizing
+official song sources and comparing the current metadata Ranking Criteria fetched
+from osu-wiki. Replies include Artist, Title and recommended Tags, source links and
+unresolved fields. Transliteration is distinguished from verified official credits;
+missing credits are clarified rather than invented. QA reserves up to $0.05 per
+request to cover search fees; actual token and web-call costs settle against the
+existing QA budget. Ordinary FA questions do not invoke internet research.
+Existing osu! map record lookups,
 rank status, statistics and existence searches remain outside this support.
 
 General Ranking Criteria quality-check explanations require supporting evidence

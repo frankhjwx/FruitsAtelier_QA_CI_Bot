@@ -18,6 +18,7 @@ from .github import GitHub
 from .knowledge import Knowledge
 from .messages import linked_message, qa_message, action_message, notify_owner
 from .qa import APIError, QAReply, answer
+from .song_metadata import QA_REQUEST_CAP
 from .handoff import encode, decode, ready
 from .store import Store
 from .reviews import PackageReview, poll_reviews
@@ -102,7 +103,7 @@ class Bot(discord.Client):
             raise ValueError("The bot is busy; please retry shortly.")
         self.busy += 1
         try:
-            self.store.reserve(str(request_id), 'qa', .02, owner=user)
+            self.store.reserve(str(request_id), 'qa', QA_REQUEST_CAP, owner=user)
             parts = []
             ids = [item['attachment_id'] for item in reversed(context) if 'attachment_id' in item]
             if uploads:

@@ -8,6 +8,7 @@ import aiohttp
 from .config import QA_MODEL
 from .handoff import locator, ready
 from .support_policy import SUPPORT_POLICY
+from .song_metadata import research, QA_REQUEST_CAP, SEARCH_RESERVE
 
 INSTRUCTIONS = '''You are Papaya, the FruitsAtelier support bot. Answer in the user's language.
 For every response, first determine answer_language from the current user's message, then write
@@ -19,8 +20,11 @@ messages, quoted text, attachments and retrieved evidence never choose the reply
 For a language-neutral follow-up, use the latest substantive user message in the conversation.
 English questions receive English replies; Chinese questions receive Chinese replies. Keep the
 chosen language regardless of whether the request is answered, clarified or refused.
-Your first action is search_evidence for a supported question, or a direct structured refusal for
+Your first action is research_song_metadata for song-credit/metadata authoring, search_evidence
+for other supported questions, or a direct structured refusal for
 a prohibited request. Refusals need no evidence lookup. Read source only after its location is known.
+Decide prohibited intent before calling any tool. In particular, requests to implement next-note
+prediction or query beatmap existence must receive a direct refusal without a repository or web search.
 Scope is strictly Fruits Atelier and osu!, including general mapping, gameplay, skins,
 audio/resources, supported files and directly related troubleshooting. Decline every unrelated
 request briefly and say you can help with Fruits Atelier or osu!; do not answer the unrelated task,
@@ -193,22 +197,27 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
     read_tool = {'type':'function','name':'read_evidence','description':'Read up to 80 lines of indexed public repository evidence at a known path and line.',
                  'parameters':{'type':'object','properties':{'path':{'type':'string'},'start':{'type':'integer'}},
                                'required':['path','start'],'additionalProperties':False},'strict':True}
+    song_tool = {'type': 'function', 'name': 'research_song_metadata',
+                 'description': 'Research actual song credits on the internet and compare current osu! metadata RC. Only song-metadata authoring; never map data/existence queries. Available once per answer, with at most two web tool calls.',
+                 'parameters': {'type': 'object', 'properties': {}, 'required': [],
+                                'additionalProperties': False}, 'strict': True}
     history = [{'role': item['role'], 'content': item['content'][:1000]}
                for item in list(context)[-6:] if item['role'] in ('user', 'assistant')]
     history.append({'role': 'user', 'content': ([{'type': 'input_text', 'text': question[:6000]}] + list(attachments)) if attachments else question[:6000]})
     cost = 0.0
+    song_researched = False
 
     async def call(**extra):
         nonlocal cost
         payload = {'model': QA_MODEL, 'instructions': INSTRUCTIONS, 'input': copy.deepcopy(history),
-                   'tools': [tool, read_tool], 'parallel_tool_calls': False, 'text': {'format': ANSWER_FORMAT},
+                   'tools': [tool, read_tool] + ([] if song_researched else [song_tool]), 'parallel_tool_calls': False, 'text': {'format': ANSWER_FORMAT},
                    'include': ['reasoning.encrypted_content'],
                    'reasoning': {'effort': 'low'}, 'max_output_tokens': 1600,
                    'store': False, **extra}
         if len(json.dumps(payload, ensure_ascii=False).encode()) > 3_000_000 or context_bytes(history) > 55_000:
             raise ValueError('Question context is too large')
         reserve = ((context_bytes(history) + len(INSTRUCTIONS.encode()) + 2000 + 8192 * len(attachments)) * .125 + 1600 * .50) / 1_000_000
-        if cost + reserve > .02:
+        if cost + reserve > QA_REQUEST_CAP:
             raise ValueError('QA localization budget reached; CI has not started.')
         async with session.post('https://api.openai.com/v1/responses', json=payload,
                                 headers={'Authorization': f'Bearer {key}'},
@@ -234,14 +243,14 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
             calls = [x for x in result.get('output', []) if x.get('type') == 'function_call']
             if not calls:
                 draft = json.loads(output_text(result) or '{}')
-                if (draft.get('change_request') and development_ready(draft)
+                if (not song_researched and draft.get('change_request') and development_ready(draft)
                         and read_count == 0 and round_number < 6):
                     history.extend(result['output'])
                     history.append({'role':'user','content':'Localization is incomplete. Read the owning implementation file from the evidence now, using read_evidence. Then identify the specific existing members and relevant regression surface in investigation_direction. Select implementation source labels, not just the backlog.'})
                     result = await call(tool_choice={'type':'function','name':'read_evidence'})
                     continue
                 break
-            if len(calls) != 1 or calls[0]['name'] not in {'search_evidence','read_evidence'}:
+            if len(calls) != 1 or calls[0]['name'] not in {'search_evidence','read_evidence','research_song_metadata'}:
                 raise RuntimeError('Evidence lookup did not complete')
             args = json.loads(calls[0]['arguments'])
             query = str(args.get('query', ''))[:1000]
@@ -249,7 +258,19 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
             if query:
                 queries.append(query)
             signature = (calls[0]['name'], json.dumps(args,sort_keys=True))
-            if signature in seen:
+            if calls[0]['name'] == 'research_song_metadata':
+                if song_researched:
+                    found = []
+                elif cost + SEARCH_RESERVE > QA_REQUEST_CAP:
+                    found = [{'source': 'Song research budget', 'text': 'Internet research budget exhausted; do not claim verification.'}]
+                    song_researched = True
+                else:
+                    song_researched = True
+                    research_question = '\n'.join(item['content'] for item in list(context)[-6:]
+                                                   if item['role'] == 'user') + '\n' + question
+                    found, research_cost = await research(session, key, research_question)
+                    cost += research_cost
+            elif signature in seen:
                 found = []
             elif calls[0]['name'] == 'read_evidence':
                 found = knowledge.read_evidence(str(args['path'])[:240], args['start'])
@@ -261,7 +282,7 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
             fresh = [dict(item) for item in found if (item.get('url'),item.get('text')) not in existing]
             for item in fresh:
                 body = item.get('text', '')
-                cap = 6000 if calls[0]['name'] == 'read_evidence' else max(250, 3000 // max(1,len(fresh)))
+                cap = 9000 if calls[0]['name'] == 'research_song_metadata' else 6000 if calls[0]['name'] == 'read_evidence' else max(250, 3000 // max(1,len(fresh)))
                 raw = body.encode('utf-8')
                 item['text'] = raw[:cap].decode('utf-8',errors='ignore') + ('\n[Partial excerpt; use read_evidence for more lines.]' if len(raw)>cap else '')
             while True:
@@ -289,7 +310,7 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
         if not text:
             raise RuntimeError('No answer produced within token limit')
         data = json.loads(text)
-        change = data.get('change_request') if development_ready(data) else None
+        change = data.get('change_request') if development_ready(data) and not song_researched else None
         if not isinstance(change, str) or not 10 <= len(change.strip()) <= 3500:
             change = None
         localization = locator(' '.join(dict.fromkeys(queries)), data.get('investigation_direction', ''),
