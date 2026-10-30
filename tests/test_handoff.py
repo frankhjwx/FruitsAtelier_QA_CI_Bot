@@ -31,6 +31,7 @@ class LocalizationTests(unittest.IsolatedAsyncioTestCase):
                 self.calls.append(kwargs['json'])
                 return Response({'usage':{'input_tokens':100,'output_tokens':30}, 'output':[
                     {'type':'message','content':[{'type':'output_text','text':json.dumps({
+                        'answer_language':'en','development_status':'ready','missing_information':[],
                         'answer':'Proposed change', 'change_request':'Show selected note time difference',
                         'code_sources':[source,'src/Invented.cs'],
                         'investigation_direction':'Inspect selection timestamps and add a two-note regression.'})}]}]})
@@ -103,6 +104,7 @@ class PreflightTests(unittest.IsolatedAsyncioTestCase):
                 output = ([{'type':'function_call', 'name':'search_evidence', 'call_id':str(n),
                             'arguments':json.dumps({'query':'selection' if n == 1 else 'timestamp', 'prefix':'' if n == 1 else 'tests/'})}]
                           if n < 3 else [{'type':'message', 'content':[{'type':'output_text','text':json.dumps({
+                              'answer_language':'en','development_status':'ready','missing_information':[],
                               'answer':'Located', 'change_request':'Display selected timestamps',
                               'code_sources':['src/Selection.cs','tests/SelectionTests.cs'], 'investigation_direction':'Inspect selection and regression'})}]}])
                 return Response({'output':output, 'usage':{'input_tokens':100,'output_tokens':30}})
@@ -129,7 +131,7 @@ class PreflightTests(unittest.IsolatedAsyncioTestCase):
                 bot.ask=AsyncMock(return_value=QAReply('Insufficient source evidence', 'Display selected timestamps', localization={'query':'selection'}))
                 interaction=NS(id=12345678901234567,user=NS(id=1),channel_id=2,guild_id=1554882915945414726)
                 result=await bot.start_job(interaction,'Display selected timestamps')
-                self.assertIn('CI has not started',result)
+                self.assertEqual(result,'Insufficient source evidence')
                 bot.github.dispatch.assert_not_awaited()
                 self.assertIsNone(bot.store.latest_job())
             finally:

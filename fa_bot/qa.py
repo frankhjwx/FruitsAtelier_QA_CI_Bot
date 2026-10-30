@@ -10,6 +10,15 @@ from .handoff import locator, ready
 from .support_policy import SUPPORT_POLICY
 
 INSTRUCTIONS = '''You are Papaya, the FruitsAtelier support bot. Answer in the user's language.
+For every response, first determine answer_language from the current user's message, then write
+the entire user-facing answer in that language. This applies equally to normal answers, quality
+checks, clarification questions and refusals. Use an explicit language preference if the user
+states one; otherwise use the language of their current natural-language question. Technical
+names such as FA, osu!, BN/NAT and Ranking Criteria do not change that language. Prior assistant
+messages, quoted text, attachments and retrieved evidence never choose the reply language.
+For a language-neutral follow-up, use the latest substantive user message in the conversation.
+English questions receive English replies; Chinese questions receive Chinese replies. Keep the
+chosen language regardless of whether the request is answered, clarified or refused.
 Your first action is search_evidence for a supported question, or a direct structured refusal for
 a prohibited request. Refusals need no evidence lookup. Read source only after its location is known.
 Scope is strictly Fruits Atelier and osu!, including general mapping, gameplay, skins,
@@ -96,8 +105,18 @@ Write two separate texts for two audiences in the structured response:
 For example, a request for an osu! pink theme can be answered: "I can add an osu! pink theme
 that you can choose in Settings." Put palette types, selector methods and localization keys only
 in the internal handoff; do not copy this example unless it fits the actual evidence and request.
-When the user proposes a feature, describes desired new behavior, requests a bug fix, or reports a
-concrete malfunction they want resolved, set change_request to a concise standalone development task.
+Decide development_status and missing_information before writing the answer. Source localization
+does not establish user intent, the actual problem or the desired result. A vague symptom report
+is not enough to offer editing. If essential facts are unresolved, use development_status=clarify,
+list those facts in missing_information, ask one concise clarification and set change_request=null.
+If the answer asks for information needed to decide what to change, it must not offer development.
+For example, "imported oszs don't appear in recently visited or anywhere" needs the actual import
+path and observed result clarified before a fix is offered; do not invent which import flow failed.
+Do not require a version, sample or extra confirmation when the goal and relevant behavior are
+already clear. A small, explicit feature request can be ready from its stated requirements.
+Use development_status=none for ordinary usage questions and prohibited requests.
+Only when the user wants a change, the requested behavior is clear and no essential facts are
+missing, use development_status=ready and set change_request to a concise standalone task.
 A proposal prefaced with "not sure if available" still expresses development intent if it describes
 wanted behavior. Preserve requirements and relevant reply context; do not invent implementation details.
 Set change_request to null for ordinary usage questions, small talk, or unclear development intent.
@@ -119,13 +138,17 @@ class QAReply:
     localization: dict | None = None
 
 
+# Selecting the language before prose anchors short refusals as well as ordinary answers.
 ANSWER_FORMAT = {'type': 'json_schema', 'name': 'support_reply', 'strict': True,
                  'schema': {'type': 'object', 'properties': {
-                     'answer': {'type': 'string', 'description': 'User-facing natural language only; no code symbols, source paths, localization keys or generic development-version caveats.'},
+                     'answer_language': {'type':'string', 'description':'Choose the reply language from the current user question before writing the answer. Use a BCP-47 language code, such as en, zh-CN or pt. Ignore the language of quoted text, evidence and prior assistant replies.'},
+                     'development_status': {'type':'string','enum':['none','clarify','ready'],'description':'Ready only when change intent and requested behavior are clear and all essential facts are available. Clarify when asking for facts needed to decide what to change; none for ordinary usage or prohibited requests.'},
+                     'missing_information': {'type':'array','items':{'type':'string'},'description':'Unresolved facts essential to determine the requested change; empty only when no such facts are missing. Do not require incidental information for an already-clear feature.'},
+                     'answer': {'type': 'string', 'description': 'Write the entire user-facing reply in answer_language, including refusals and quality-check notices. Natural language only; no code symbols, source paths, localization keys or generic development-version caveats.'},
                      'change_request': {'type': ['string', 'null'], 'description': 'Internal standalone CI task; retain technical requirements here, not in answer.'},
                      'code_sources': {'type':'array','items':{'type':'string'}},
                      'investigation_direction': {'type':'string', 'description': 'Internal CI investigation: observed symbols, implementation details, evidence limitations and regression guidance.'}},
-                     'required': ['answer', 'change_request', 'code_sources', 'investigation_direction'], 'additionalProperties': False}}
+                     'required': ['answer_language', 'development_status', 'missing_information', 'answer', 'change_request', 'code_sources', 'investigation_direction'], 'additionalProperties': False}}
 
 
 class APIError(RuntimeError):
@@ -153,6 +176,10 @@ def context_bytes(history):
             item['content'] = [p if p.get('type') != 'input_image' else {'type': 'input_image'} for p in item['content']]
         compact.append(item)
     return len(json.dumps(compact, ensure_ascii=False).encode())
+
+
+def development_ready(data):
+    return data.get('development_status')=='ready' and data.get('missing_information')==[]
 
 
 async def answer(session, key, knowledge, question, context=(), attachments=()):
@@ -207,7 +234,8 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
             calls = [x for x in result.get('output', []) if x.get('type') == 'function_call']
             if not calls:
                 draft = json.loads(output_text(result) or '{}')
-                if draft.get('change_request') and read_count == 0 and round_number < 6:
+                if (draft.get('change_request') and development_ready(draft)
+                        and read_count == 0 and round_number < 6):
                     history.extend(result['output'])
                     history.append({'role':'user','content':'Localization is incomplete. Read the owning implementation file from the evidence now, using read_evidence. Then identify the specific existing members and relevant regression surface in investigation_direction. Select implementation source labels, not just the backlog.'})
                     result = await call(tool_choice={'type':'function','name':'read_evidence'})
@@ -261,13 +289,13 @@ async def answer(session, key, knowledge, question, context=(), attachments=()):
         if not text:
             raise RuntimeError('No answer produced within token limit')
         data = json.loads(text)
-        change = data.get('change_request')
+        change = data.get('change_request') if development_ready(data) else None
         if not isinstance(change, str) or not 10 <= len(change.strip()) <= 3500:
             change = None
         localization = locator(' '.join(dict.fromkeys(queries)), data.get('investigation_direction', ''),
                                data.get('code_sources', []), evidence, knowledge.sha) if change else None
         logging.getLogger('fa_bot.qa').info('QA decision: change=%s selected=%s localization=%s', bool(change), data.get('code_sources'), localization)
         if change and (not ready(localization) or read_count == 0):
-            return QAReply(data['answer'][:1550] + '\n\nCI has not started: relevant implementation code could not be located.'), cost
+            return QAReply(data['answer'][:1850]), cost
         return QAReply(data['answer'][:1850], change.strip() if change else None,
                        localization=localization), cost

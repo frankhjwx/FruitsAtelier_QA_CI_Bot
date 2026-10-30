@@ -55,7 +55,10 @@ an explicit mention or a reply to Papaya. Unaddressed conversation is ignored.
 QA identifies feature proposals and bug-fix intent in the same response call.
 When appropriate, it offers a **Modify project and test** button for 15 minutes. Only the
 original requester in the same channel can confirm; code editing starts only
-after confirmation. Ordinary questions show no development button. Large subsystem requests and open-ended prototypes are declined by the model
+after confirmation. A proposal requires clear change intent, a defined outcome and
+no missing facts essential to decide what to change. Requests still awaiting key
+clarification have no development button, even if related source has been located.
+Ordinary questions show no development button. Large subsystem requests and open-ended prototypes are declined by the model
 without a development proposal; users are asked to narrow the scope. Concurrent
 or repeated clicks cannot dispatch the same offer twice. A busy repair slot
 leaves the offer available to retry until it expires. `/develop` and `/revise`
@@ -385,6 +388,12 @@ installs/enables the timer; check it with:
 systemctl list-timers fruitsatelier-attachments-cleanup.timer
 systemctl status fruitsatelier-attachments-cleanup.service --no-pager
 ```
+
+User-facing QA replies select their language from the current user
+question (or an explicit language preference), including normal answers, quality
+checks, clarifications and refusals. Prior assistant text, quotations and retrieved
+evidence do not override that choice. Language-neutral follow-ups use the latest
+substantive user message.
 
 QA and development share intent restrictions covering conversation context and
 attachments. They refuse information about identifiable osu! mappers/beatmaps,

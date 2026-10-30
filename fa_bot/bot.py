@@ -254,7 +254,7 @@ class Bot(discord.Client):
             reply = await self.ask(interaction.user.id, 'preflight-'+key, request,
                                    context=context, channel=interaction.channel_id, preflight=True)
             if not reply.change_request or not ready(reply.localization):
-                return reply.text + '\n\nCI has not started: QA must locate relevant implementation code first.'
+                return reply.text
             localization = reply.localization
         request = encode(request, localization)
         transfer_token = await asyncio.to_thread(create_transfer, interaction.user.id, interaction.channel_id, key, attachment_ids)
