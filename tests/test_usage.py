@@ -136,7 +136,7 @@ class UsageBudgetTests(unittest.TestCase):
                       'output':[{'type':'function_call','name':'search','call_id':'1','arguments':'{"query":"theme"}'}]},
                      {'usage':{'input_tokens':300,'output_tokens':50},'status':'completed',
                       'output':[{'type':'message','content':[{'type':'output_text','text':'No change needed.'}]}]}]
-            with patch.object(worker,'CAP',.065), patch.object(worker,'request_json',side_effect=replies) as request, patch.object(ws,'search',return_value='Theme information'):
+            with patch.object(worker,'INSTRUCTIONS','Fixed test instructions.'), patch.object(worker,'CAP',.065), patch.object(worker,'request_json',side_effect=replies) as request, patch.object(ws,'search',return_value='Theme information'):
                 summary,cost=worker.generate(ws,'Inspect theme behavior','fake')
             self.assertEqual(request.call_count,2)
             self.assertAlmostEqual(cost,.0025)
@@ -152,7 +152,7 @@ class UsageBudgetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             ws=worker.Workspace(folder)
             response={'output':[{'type':'function_call','name':'search','call_id':'1','arguments':'{"query":"theme"}'}]}
-            with patch.object(worker,'CAP',.065), patch.object(worker,'request_json',return_value=response) as request, patch.object(ws,'search',return_value='Theme information'):
+            with patch.object(worker,'INSTRUCTIONS','Fixed test instructions.'), patch.object(worker,'CAP',.065), patch.object(worker,'request_json',return_value=response) as request, patch.object(ws,'search',return_value='Theme information'):
                 with self.assertRaisesRegex(RuntimeError,'budget reached'):
                     worker.generate(ws,'Inspect theme behavior','fake')
             self.assertEqual(request.call_count,1)

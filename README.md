@@ -406,6 +406,12 @@ pattern generation, next-note prediction or equivalent completion features.
 Renaming, splitting or framing prohibited requests as small prototypes does not
 make them eligible. Refusals offer no development button or generated alternative.
 
+Song-metadata authoring is supported, including specific song titles: field formatting,
+Unicode/romanized titles and supplied artist/version credits for a user's own map.
+Transliteration of supplied text is distinguished from verified official credits;
+missing credits are clarified rather than invented. Existing osu! map record lookups,
+rank status, statistics and existence searches remain outside this support.
+
 General Ranking Criteria quality-check explanations require supporting evidence
 and an explicit notice that actual Rank eligibility still requires assessment and
 confirmation by BN/NAT team members. They do not evaluate specific maps or certify
