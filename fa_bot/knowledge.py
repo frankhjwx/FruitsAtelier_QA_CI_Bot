@@ -27,9 +27,9 @@ class Knowledge:
         self.sha = self.updated = ''
         self.code_index = None
 
-    def load(self, archive, sha, issues):
+    def load(self, archive, sha, issues, *, persistent_cache=True):
         chunks = []
-        cache = Path(os.environ['STATE_FILE']).parent/'code-index.sqlite3' if os.getenv('STATE_FILE') else None
+        cache = Path(os.environ['STATE_FILE']).parent/'code-index.sqlite3' if persistent_cache and os.getenv('STATE_FILE') else None
         index = self.code_index if self.code_index and self.code_index.sha == sha else None
         if index is None and cache and cache.is_file():
             try:

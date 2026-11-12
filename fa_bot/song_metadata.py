@@ -4,12 +4,13 @@ import json
 import aiohttp
 
 from .config import QA_MODEL
+from .qa_usage import usage_cost
 from .support_policy import SUPPORT_POLICY
 
 RC_URL = 'https://osu.ppy.sh/wiki/en/Ranking_criteria/Metadata'
 RC_SOURCE = 'https://raw.githubusercontent.com/ppy/osu-wiki/master/wiki/Ranking_criteria/Metadata/en.md'
-QA_REQUEST_CAP = .05
-SEARCH_RESERVE = .035
+QA_REQUEST_CAP = .50
+SEARCH_RESERVE = .30
 
 
 async def research(session, key, question):
@@ -67,7 +68,7 @@ Markdown source links, not internal citation markers. Keep research under 4500 c
         result = await response.json()
     usage = result['usage']
     searches = [item for item in result.get('output', []) if item.get('type') == 'web_search_call']
-    cost = (usage['input_tokens'] * .125 + usage['output_tokens'] * .50) / 1_000_000
+    cost = usage_cost(usage)
     cost += .01 * sum(item.get('action', {}).get('type') == 'search' for item in searches)
     text = '\n'.join(part.get('text', '') for item in result.get('output', [])
                      if item.get('type') == 'message' for part in item.get('content', [])

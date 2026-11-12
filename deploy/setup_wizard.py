@@ -46,7 +46,7 @@ import json, sys, urllib.request, urllib.error
 key=json.load(sys.stdin)['key']
 request=urllib.request.Request('https://api.openai.com/v1/responses',
     headers={'Authorization':'Bearer '+key,'Content-Type':'application/json'},
-    data=json.dumps({'model':'gpt-6-luna','input':'Reply OK.','max_output_tokens':64,
+    data=json.dumps({'model':'gpt-6.1-sol','input':'Reply OK.','max_output_tokens':64,
                      'reasoning':{'effort':'low'},'store':False}).encode())
 try:
     with urllib.request.urlopen(request,timeout=35) as response:
@@ -111,7 +111,7 @@ def configure(values, start, report):
         report('Checking ' + label + '...')
         for repo in repos:
             api('https://api.github.com/repos/' + repo + '/actions/workflows', key)
-    for label, key, model in [('QA OpenAI Key', qa, 'gpt-6-luna'),
+    for label, key, model in [('QA OpenAI Key', qa, 'gpt-6.1-sol'),
                               ('CI OpenAI Key', ci, 'gpt-6.1-sol')]:
         report('Checking model access for ' + label + ' (one small API request)...')
         api('https://api.openai.com/v1/responses', key, {
