@@ -15,7 +15,8 @@ from .attachments import AttachmentStore
 from .transfer import create_transfer, start_transfer_server
 from .config import GUILDS, OWNER, JOB_CAP, WORK_BRANCH, secret
 from .github import GitHub
-from .knowledge import Knowledge
+from .repository_knowledge import RepositoryKnowledge
+from pathlib import Path
 from .messages import linked_message, qa_message, action_message, notify_owner
 from .qa import APIError, QAReply, answer
 from .song_metadata import QA_REQUEST_CAP
@@ -43,7 +44,7 @@ class Bot(discord.Client):
         super().__init__(intents=intents, allowed_mentions=discord.AllowedMentions.none())
         self.tree = CommandTree(self)
         self.store = Store(os.getenv('STATE_FILE', 'state/bot.sqlite3'))
-        self.knowledge = Knowledge()
+        self.knowledge = RepositoryKnowledge(Path(os.getenv('STATE_FILE', 'state/bot.sqlite3')).parent / 'knowledge.sqlite3')
         self.attachments = AttachmentStore()
         self.cooldowns = {}
         self.busy = 0
@@ -154,11 +155,11 @@ class Bot(discord.Client):
     async def sync_knowledge(self):
         while True:
             try:
-                await self.knowledge.refresh(self.github)
-                LOG.info('Knowledge refreshed: %s', self.knowledge.sha)
+                if await self.knowledge.refresh(self.github):
+                    LOG.info('Knowledge updated: %s', {'release': self.knowledge.release['tag_name'], 'commit': self.knowledge.sha})
             except Exception as error:
                 LOG.warning('Knowledge refresh failed: %s', type(error).__name__)
-            await asyncio.sleep(900)
+            await asyncio.sleep(3600)
 
     async def poll_jobs(self):
         await self.wait_until_ready()

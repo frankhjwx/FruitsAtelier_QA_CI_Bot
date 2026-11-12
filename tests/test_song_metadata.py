@@ -35,7 +35,7 @@ class SongMetadataTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('Use primary metadata sources.', payload['input'][0]['content'])
         self.assertEqual(evidence[0]['url'], RC_URL)
         self.assertIn('https://label.example/release', evidence[0]['text'])
-        self.assertAlmostEqual(cost, .010225)
+        self.assertAlmostEqual(cost, .014)
 
     async def test_rc_failure_does_not_claim_verification_or_search(self):
         session = NS(get=Mock(side_effect=TimeoutError), post=Mock())

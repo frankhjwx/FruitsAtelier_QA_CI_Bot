@@ -7,17 +7,16 @@ repository's GitHub-hosted workflow builds and verifies experimental Windows pac
 Full desktop regression suites run when a PR is submitted.
 
 This is an independent repository. Its default `main` branch contains
-the Bot and editing workflow. The editor repository is read at `dev`; development tasks publish
+the Bot and editing workflow. QA reads the latest stable release; development tasks publish
 only the shared `codex-discord-bug-fix` branch there. Bot changes do not modify the
 editor's `dev` or `main` branches.
 
 ## User commands
 
-- `@Papaya <question>` or `/ask`: answer from public documentation, source and
-  recently updated issues. The bot translates search keywords when needed and
+- `@Papaya <question>` or `/ask`: answer from the latest stable release source, with documentation for navigation. The bot translates search keywords when needed and
   cites commit-pinned evidence through compact source buttons below the answer.
   Message bodies omit URLs and disable link previews. The 10–30 second target is a response target,
-  not a guarantee of bug reproduction. A lookup has a 26-second deadline.
+  not a guarantee of bug reproduction. QA has a 150-second overall deadline and a 65-second per-call timeout.
 
 - `/template`: concise usage, bug and feature request templates.
 - `/develop`: attempt a small change on `codex-discord-bug-fix`. The branch
@@ -80,12 +79,21 @@ Progress uses controller state and private validation results, without model cal
 
 ## Evidence and test packages
 
-The in-memory index refreshes every 15 minutes from `dev` and the 100 most
-recently updated public issues/PRs. A stale successful snapshot remains available
-when refresh fails; answers receive its synchronization timestamp. Repository
-evidence can describe unreleased behavior. Issue reports are not proof of
-reproduction, and an absent search result does not establish that a feature or
-bug is absent.
+At startup and every hour, the server checks GitHub's latest published stable
+Release and resolves its tag to an exact commit. Changed source is downloaded as
+a commit-pinned snapshot through the GitHub API. Only changed release evidence
+updates `knowledge.sqlite3` beside the state database; its change journal records
+the release version and commit. Unchanged checks do not download source or rewrite
+the database.
+
+Each source update rebuilds local document chunks and C# syntax/FTS indexes. This
+retrieval preparation uses no paid model calls. The complete snapshot publishes
+atomically and survives restarts; a failed refresh retains the previous snapshot.
+Answers receive its content-update timestamp, release version and commit-pinned
+source links. Feature and usage claims require the release implementation as
+supporting evidence. README, docs and release-note prose are navigation aids,
+not proof of implemented behavior; website content is not indexed. QA does not
+read development branches or infer feature availability from current issues.
 
 Successful editor CI runs provide packages and checksums as GitHub Actions
 artifacts in `frankhjwx/FruitsAtelier`, with seven-day retention. Users must sign
@@ -124,9 +132,8 @@ and keeps the same model, scope checks and $0.50 cap. Its private result artifac
 contains verification status and usage metadata, not source or user attachments.
 Run benchmark tasks sequentially against the same commit for comparable results.
 
-QA uses `gpt-6-luna`; development uses `gpt-6.1-sol`. Standard processing is used.
-The current price assumptions are $0.10/$0.50 and $2/$10 per million input/output
-tokens respectively. Conservative reservations include a cache-write margin.
+QA, song-metadata internet research and development use `gpt-6.1-sol` with Standard processing.
+The current price assumptions are $2/$10 per million ordinary input/output tokens. Conservative reservations include a cache-write margin.
 The development worker preserves controller messages in the conversation prefix,
 marks reusable message boundaries, and retains reasoning across turns for cache
 reuse. Usage diagnostics include cached reads and cache writes by lifetime.
@@ -173,7 +180,7 @@ outside the actual retrieved text do not become CI source locations.
 
 The durable UTC-calendar-month ledger limits automatic QA to $10 and development
 reservations to $80, leaving $10 of a $100 target outside automated allocation.
-QA reserves $0.02 before a request and settles successful calls using reported
+QA reserves up to $0.50 before a request and settles successful calls using reported
 usage. Failures retain the reservation. Development reserves $0.50 per attempt;
 unused development reservation is not refunded. PR creation uses no model call. The worker checks each model call against the same per-attempt ceiling.
 Completed calls use reported token counts and cache breakdowns. The next call
@@ -190,7 +197,7 @@ The development worker supports scoped literal search with pagination, bounded l
 reads and persistent working notes to reduce repeated queries after context compaction.
 QA first checks whether the requested behavior is already supported. Its instructions suppress
 development proposals for an already-satisfied goal, while retaining concrete defect reports and
-distinguishing dev support from released behavior. This is a model judgment grounded in evidence.
+grounding feature claims in released implementation. This is a model judgment grounded in evidence.
 Confirmed proposals carry QA's technical search query, investigation direction, evidence commit,
 and up to six source locations. Locations must come from the evidence returned to QA.
 CI prioritizes these leads and rereads source from its checkout; line-based excerpts are used only
@@ -241,16 +248,16 @@ words. This is structural and lexical retrieval, not vector embeddings or a
 compiler-resolved call graph; it makes no additional model calls.
 QA searches source and test symbols using the model's technical query, without appending the raw
 user request to that query. QA can follow symbols across up to eight evidence searches/reads
-(nine model calls), with a 150-second wall-clock limit and a $0.02 reservation. Ordinary questions can finish after one search.
+(nine model calls), with a 150-second wall-clock limit and a $0.50 reservation. Ordinary questions can finish after one search.
 Follow-up searches can target a source or test path; prior evidence and tool definitions
 remain in the conversation. All development entrances, including `/develop` and `/revise`,
 require implementation-code localization before reserving CI budget or dispatching.
 Documentation-only or inconclusive lookups remain QA-only. Revisions rerun QA; confirmation
 reuses current localization. This gate establishes source leads, not reproduction or correctness.
 
-The server saves `code-index.sqlite3` beside the state database. Its commit SHA
-and index format must match before reuse; a different revision triggers rebuilding
-and atomic cache replacement during knowledge refresh. Only public repository
+The server saves the release index in `knowledge.sqlite3` beside the state database.
+The index format must match before reuse; a changed release commit triggers rebuilding
+and atomic snapshot replacement during knowledge refresh. Only public repository
 source is indexed. User attachments and credentials are never added to this cache.
 
 CI exposes `code_search` using the same indexer against its own checked-out commit.
@@ -412,7 +419,7 @@ internet research call permits at most two web tool calls per answer, prioritizi
 official song sources and comparing the current metadata Ranking Criteria fetched
 from osu-wiki. Replies include Artist, Title and recommended Tags, source links and
 unresolved fields. Transliteration is distinguished from verified official credits;
-missing credits are clarified rather than invented. QA reserves up to $0.05 per
+missing credits are clarified rather than invented. QA reserves up to $0.50 per
 request to cover search fees; actual token and web-call costs settle against the
 existing QA budget. Ordinary FA questions do not invoke internet research.
 Existing osu! map record lookups,

@@ -8,7 +8,7 @@ def secret(name):
 
 
 SOURCE_REPO = 'frankhjwx/FruitsAtelier'
-QA_MODEL = 'gpt-6-luna'
+QA_MODEL = 'gpt-6.1-sol'
 CODE_MODEL = 'gpt-6.1-sol'
 WORK_BRANCH = 'codex-discord-bug-fix'
 GUILDS = {1479878482438918297, 1554882915945414726}

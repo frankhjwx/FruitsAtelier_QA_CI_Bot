@@ -12,6 +12,7 @@ from fa_bot.handoff import encode, ready
 from fa_bot.knowledge import Knowledge
 from fa_bot.qa import answer
 from fa_bot.store import Store
+from fa_bot.song_metadata import QA_REQUEST_CAP
 
 
 async def prepare(session, key, knowledge, request):
@@ -32,7 +33,7 @@ async def main(args):
         async with aiohttp.ClientSession() as session:
             knowledge = Knowledge()
             await knowledge.refresh(GitHub(session, secret('GITHUB_TOKEN'), ''), args.source_commit)
-            store.reserve(key, 'qa', .02)
+            store.reserve(key, 'qa', QA_REQUEST_CAP)
             result = await prepare(session, secret('OPENAI_API_KEY'), knowledge,
                                    Path(args.request_file).read_text(encoding='utf-8-sig'))
             store.settle(key, result['qa_cost'])
